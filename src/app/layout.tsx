@@ -7,7 +7,7 @@ import { Toaster } from "react-hot-toast";
 const geist = Geist({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Fine Portal – Penalty Management System",
+  title: "Devsinn Team Management Portal",
   description: "Manage employee penalties, track payments, and send notifications.",
 };
 
@@ -18,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${geist.className} bg-[#0D1117] text-white antialiased`}>
+      <body suppressHydrationWarning className={`${geist.className} bg-[#0D1117] text-white antialiased`}>
         <AuthProvider>
           {children}
           <Toaster

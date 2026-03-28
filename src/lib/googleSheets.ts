@@ -1,20 +1,42 @@
-import { Employee, Penalty, PenaltyStatus, PaymentType } from '@/types';
-
-const APPS_SCRIPT_URL = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL as string;
+import {
+    Employee,
+    Penalty,
+    PenaltyStatus,
+    PaymentType,
+    PenaltyExpense,
+    CompanyExpense,
+    CompanyIncome,
+    PayrollRecord,
+    AttendanceRecord,
+    AttendanceDayType,
+    AttendanceStatus,
+    WorkSession,
+    BreakSession,
+    EmployeeMonthlyAttendanceSummary,
+} from '@/types';
 
 async function request<T>(action: string, data?: object): Promise<T> {
-    // Use GET with query params — avoids CORS preflight & Apps Script redirect issues
-    const url = new URL(APPS_SCRIPT_URL);
-    url.searchParams.set('action', action);
-    if (data) {
-        url.searchParams.set('payload', JSON.stringify(data));
-    }
-    const res = await fetch(url.toString(), {
-        method: 'GET',
-        redirect: 'follow',
+    const res = await fetch('/api/google-sheets', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            action,
+            payload: data,
+        }),
     });
-    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-    const json = await res.json();
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+        const message =
+            json && typeof json === 'object' && 'error' in json && typeof json.error === 'string'
+                ? json.error
+                : `Request failed: ${res.status}`;
+        throw new Error(message);
+    }
+    if (!json || typeof json !== 'object') {
+        throw new Error('Invalid JSON response from API');
+    }
     if (json.error) throw new Error(json.error);
     return json.data as T;
 }
@@ -25,8 +47,12 @@ export async function getEmployees(): Promise<Employee[]> {
     return request<Employee[]>('getEmployees');
 }
 
-export async function addEmployee(name: string, email: string): Promise<Employee> {
-    return request<Employee>('addEmployee', { name, email });
+export async function addEmployee(data: Omit<Employee, 'id' | 'createdAt'>): Promise<Employee> {
+    return request<Employee>('addEmployee', data);
+}
+
+export async function updateEmployee(id: string, updates: Partial<Employee>): Promise<Employee> {
+    return request<Employee>('updateEmployee', { id, updates });
 }
 
 export async function deleteEmployee(id: string): Promise<void> {
@@ -72,4 +98,87 @@ export async function submitPayment(
             notes,
         },
     });
+}
+
+// ============ PENALTY EXPENSES ============
+
+export async function getPenaltyExpenses(): Promise<PenaltyExpense[]> {
+    return request<PenaltyExpense[]>('getPenaltyExpenses');
+}
+
+export async function addPenaltyExpense(data: Omit<PenaltyExpense, 'id' | 'createdAt'>): Promise<PenaltyExpense> {
+    return request<PenaltyExpense>('addPenaltyExpense', data);
+}
+
+export async function deletePenaltyExpense(id: string): Promise<void> {
+    return request<void>('deletePenaltyExpense', { id });
+}
+
+// ============ COMPANY EXPENSES ============
+
+export async function getCompanyExpenses(): Promise<CompanyExpense[]> {
+    return request<CompanyExpense[]>('getCompanyExpenses');
+}
+
+export async function addCompanyExpense(data: Omit<CompanyExpense, 'id' | 'createdAt'>): Promise<CompanyExpense> {
+    return request<CompanyExpense>('addCompanyExpense', data);
+}
+
+export async function deleteCompanyExpense(id: string): Promise<void> {
+    return request<void>('deleteCompanyExpense', { id });
+}
+
+// ============ COMPANY INCOME ============
+
+export async function getCompanyIncomes(): Promise<CompanyIncome[]> {
+    return request<CompanyIncome[]>('getCompanyIncomes');
+}
+
+export async function addCompanyIncome(data: Omit<CompanyIncome, 'id' | 'createdAt'>): Promise<CompanyIncome> {
+    return request<CompanyIncome>('addCompanyIncome', data);
+}
+
+export async function deleteCompanyIncome(id: string): Promise<void> {
+    return request<void>('deleteCompanyIncome', { id });
+}
+
+// ============ PAYROLL ============
+
+export async function getPayrollRecords(): Promise<PayrollRecord[]> {
+    return request<PayrollRecord[]>('getPayrollRecords');
+}
+
+export async function addPayrollRecord(data: Omit<PayrollRecord, 'id' | 'createdAt'>): Promise<PayrollRecord> {
+    return request<PayrollRecord>('addPayrollRecord', data);
+}
+
+// ============ ATTENDANCE ============
+
+export async function getAttendanceByDate(date: string): Promise<AttendanceRecord[]> {
+    return request<AttendanceRecord[]>('getAttendanceByDate', { date });
+}
+
+export async function upsertAttendanceRecord(data: {
+    employeeId: string;
+    date: string;
+    dayType: AttendanceDayType;
+    status: AttendanceStatus;
+    leaveReason?: string;
+    trackingHours?: number;
+    workSessions?: WorkSession[];
+    breakSessions?: BreakSession[];
+}): Promise<AttendanceRecord> {
+    return request<AttendanceRecord>('upsertAttendanceRecord', data);
+}
+
+export async function setHolidayForDate(date: string): Promise<AttendanceRecord> {
+    return request<AttendanceRecord>('setHolidayForDate', { date });
+}
+
+export async function getEmployeeMonthlyAttendance(
+    employeeId: string,
+    month: number,
+    year: number
+): Promise<EmployeeMonthlyAttendanceSummary> {
+    return request<EmployeeMonthlyAttendanceSummary>('getEmployeeMonthlyAttendance', { employeeId, month, year });
 }

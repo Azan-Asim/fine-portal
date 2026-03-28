@@ -53,7 +53,7 @@ export default function LoginPage() {
                         style={{ background: 'var(--accent-dim)', border: '1px solid rgba(59,245,196,0.3)' }}>
                         <ShieldCheck size={32} style={{ color: 'var(--accent)' }} />
                     </div>
-                    <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Fine Portal</h1>
+                    <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Devsinn Team Management Portal</h1>
                     <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Penalty Management System</p>
                 </div>
 
@@ -110,7 +110,7 @@ export default function LoginPage() {
 
                     <div className="mt-6 pt-4 border-t text-center" style={{ borderColor: 'var(--border)' }}>
                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            Fine Portal &copy; {new Date().getFullYear()} — Penalty Management System
+                            Devsinn Team Management Portal &copy; {new Date().getFullYear()} — Penalty Management System
                         </p>
                     </div>
                 </div>

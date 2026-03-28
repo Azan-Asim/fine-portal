@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import {
-    LayoutDashboard, Users, FileText, CreditCard, Building2, LogOut, ShieldCheck
+    LayoutDashboard, Users, FileText, CreditCard, Building2, LogOut, ShieldCheck, DollarSign, CalendarCheck2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +13,9 @@ const adminLinks = [
     { href: '/admin/employees', label: 'Employees', icon: Users },
     { href: '/admin/penalties', label: 'Penalties', icon: FileText },
     { href: '/admin/issue-penalty', label: 'Issue Penalty', icon: ShieldCheck },
+    { href: '/admin/attendance', label: 'Attendance', icon: CalendarCheck2 },
+    { href: '/admin/expenses', label: 'Expenses', icon: DollarSign },
+    { href: '/admin/payroll', label: 'Payroll', icon: CreditCard },
     { href: '/bank-info', label: 'Bank Info', icon: Building2 },
 ];
 
@@ -35,10 +38,10 @@ export default function Sidebar() {
                 <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg flex items-center justify-center text-black font-bold text-sm"
                         style={{ background: 'var(--accent)' }}>
-                        FP
+                        DT
                     </div>
                     <div>
-                        <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Fine Portal</p>
+                        <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Devsinn Team Management Portal</p>
                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                             {user?.role === 'admin' ? 'Admin Panel' : 'Employee Portal'}
                         </p>

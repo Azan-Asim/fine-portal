@@ -1,22 +1,35 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Header from '@/components/Header';
-import { getEmployees, addEmployee, deleteEmployee } from '@/lib/googleSheets';
+import { getEmployees, addEmployee, updateEmployee, deleteEmployee } from '@/lib/googleSheets';
 import { Employee } from '@/types';
-import { UserPlus, Trash2, Search, Loader2, Users } from 'lucide-react';
+import { UserPlus, Trash2, Search, Loader2, Users, Edit, Image as ImageIcon, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { uploadImage } from '@/lib/uploadImage';
+
+const initialForm = {
+    name: '', email: '', fatherName: '', cnic: '', picture: '',
+    bankName: '', bankTitle: '', bankAccountNumber: '', address: '',
+    jobPosition: '', status: 'Currently Working', joiningDate: '', contactNumber: ''
+};
 
 export default function EmployeesPage() {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    
+    // Form state
     const [showForm, setShowForm] = useState(false);
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-    const [adding, setAdding] = useState(false);
+    const [formData, setFormData] = useState(initialForm);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [uploadingImage, setUploadingImage] = useState(false);
+
     const [deleting, setDeleting] = useState<string | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<Employee | null>(null);
+    
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -34,22 +47,76 @@ export default function EmployeesPage() {
 
     const filtered = employees.filter(e =>
         e.name.toLowerCase().includes(search.toLowerCase()) ||
-        e.email.toLowerCase().includes(search.toLowerCase())
+        e.email.toLowerCase().includes(search.toLowerCase()) ||
+        e.jobPosition?.toLowerCase().includes(search.toLowerCase()) ||
+        e.contactNumber?.toLowerCase().includes(search.toLowerCase())
     );
 
-    const handleAdd = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!name.trim() || !email.trim()) { toast.error('Name and email required.'); return; }
-        setAdding(true);
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        
+        setUploadingImage(true);
         try {
-            const emp = await addEmployee(name.trim(), email.trim().toLowerCase());
-            setEmployees(prev => [...prev, emp]);
-            setName(''); setEmail(''); setShowForm(false);
-            toast.success('Employee added successfully!');
-        } catch {
-            toast.error('Failed to add employee.');
+            const url = await uploadImage(file);
+            setFormData(prev => ({ ...prev, picture: url }));
+            toast.success('Picture uploaded');
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to upload picture');
         } finally {
-            setAdding(false);
+            setUploadingImage(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const handleOpenAdd = () => {
+        setFormData(initialForm);
+        setEditingId(null);
+        setShowForm(true);
+    };
+
+    const handleOpenEdit = (emp: Employee) => {
+        setFormData({
+            name: emp.name || '', email: emp.email || '', fatherName: emp.fatherName || '',
+            cnic: emp.cnic || '', picture: emp.picture || '', bankName: emp.bankName || '',
+            bankTitle: emp.bankTitle || '', bankAccountNumber: emp.bankAccountNumber || '',
+            address: emp.address || '', jobPosition: emp.jobPosition || '',
+            status: emp.status || 'Currently Working', joiningDate: emp.joiningDate || '',
+            contactNumber: emp.contactNumber || ''
+        });
+        setEditingId(emp.id);
+        setShowForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!formData.name.trim() || !formData.email.trim()) { 
+            toast.error('Name and email are required.'); return; 
+        }
+        setSaving(true);
+        try {
+            if (editingId) {
+                const updated = await updateEmployee(editingId, formData);
+                setEmployees(prev => prev.map(emp => emp.id === editingId ? { ...emp, ...updated } : emp));
+                toast.success('Employee updated.');
+            } else {
+                const emp = await addEmployee(formData);
+                setEmployees(prev => [...prev, emp]);
+                toast.success('Employee added.');
+            }
+            setShowForm(false);
+            setFormData(initialForm);
+            setEditingId(null);
+        } catch {
+            toast.error(`Failed to ${editingId ? 'update' : 'add'} employee.`);
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -76,35 +143,132 @@ export default function EmployeesPage() {
                 <div className="flex flex-col sm:flex-row gap-3">
                     <div className="relative flex-1">
                         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-                        <input className="input pl-9" placeholder="Search employees..." value={search}
+                        <input className="input pl-9" placeholder="Search employees, job positions..." value={search}
                             onChange={e => setSearch(e.target.value)} />
                     </div>
-                    <button onClick={() => setShowForm(!showForm)} className="btn-primary">
-                        <UserPlus size={16} /> Add Employee
-                    </button>
+                    {!showForm && (
+                        <button onClick={handleOpenAdd} className="btn-primary">
+                            <UserPlus size={16} /> Add Employee
+                        </button>
+                    )}
                 </div>
 
-                {/* Add Form */}
+                {/* Form */}
                 {showForm && (
                     <div className="card">
-                        <h3 className="font-semibold mb-4">Add New Employee</h3>
-                        <form onSubmit={handleAdd} className="grid sm:grid-cols-3 gap-4">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold">
+                                {editingId ? 'Edit Employee' : 'Add New Employee'}
+                            </h3>
+                            <button onClick={() => setShowForm(false)} className="p-2 hover:bg-white/5 rounded-lg transition-colors" style={{ color: 'var(--text-secondary)' }}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            {/* Personal Information */}
                             <div>
-                                <label className="label">Full Name</label>
-                                <input className="input" placeholder="John Doe" value={name}
-                                    onChange={e => setName(e.target.value)} />
+                                <h4 className="text-sm font-semibold mb-3 uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Personal Information</h4>
+                                <div className="grid sm:grid-cols-3 gap-4">
+                                    <div className="sm:col-span-3 lg:col-span-1 flex flex-col justify-center">
+                                        <label className="label">Profile Picture</label>
+                                        <div className="flex items-center gap-4 mt-2">
+                                            <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center shrink-0 border" style={{ borderColor: 'var(--border)', background: 'var(--surface-light)' }}>
+                                                {formData.picture ? (
+                                                    <img src={formData.picture} alt="Profile" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <ImageIcon size={24} style={{ color: 'var(--text-secondary)' }} />
+                                                )}
+                                            </div>
+                                            <div className="flex-1">
+                                                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
+                                                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage} className="btn-secondary text-sm w-full justify-center">
+                                                    {uploadingImage ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
+                                                    {uploadingImage ? 'Uploading...' : 'Choose Image'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="sm:col-span-3 lg:col-span-2 grid sm:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="label">Full Name *</label>
+                                            <input className="input" name="name" placeholder="John Doe" value={formData.name} onChange={handleInputChange} required />
+                                        </div>
+                                        <div>
+                                            <label className="label">Father's Name</label>
+                                            <input className="input" name="fatherName" placeholder="Richard Doe" value={formData.fatherName} onChange={handleInputChange} />
+                                        </div>
+                                        <div>
+                                            <label className="label">CNIC</label>
+                                            <input className="input" name="cnic" placeholder="12345-6789012-3" value={formData.cnic} onChange={handleInputChange} />
+                                        </div>
+                                    </div>
+
+                                    <div className="sm:col-span-3 grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="label">Contact Number</label>
+                                            <input className="input" name="contactNumber" placeholder="+123456789" value={formData.contactNumber} onChange={handleInputChange} />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="label">Residential Address</label>
+                                            <input className="input" name="address" placeholder="123 Main St, City" value={formData.address} onChange={handleInputChange} />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
+
+                            {/* Employment Details */}
                             <div>
-                                <label className="label">Email Address</label>
-                                <input type="email" className="input" placeholder="john@company.com" value={email}
-                                    onChange={e => setEmail(e.target.value)} />
+                                <h4 className="text-sm font-semibold mb-3 uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Employment Details</h4>
+                                <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="md:col-span-2">
+                                        <label className="label">Email Address *</label>
+                                        <input type="email" className="input" name="email" placeholder="john@company.com" value={formData.email} onChange={handleInputChange} required />
+                                    </div>
+                                    <div>
+                                        <label className="label">Job Position</label>
+                                        <input className="input" name="jobPosition" placeholder="Software Engineer" value={formData.jobPosition} onChange={handleInputChange} />
+                                    </div>
+                                    <div>
+                                        <label className="label">Joining Date</label>
+                                        <input type="date" className="input" name="joiningDate" value={formData.joiningDate} onChange={handleInputChange} />
+                                    </div>
+                                    <div className="sm:col-span-2 md:col-span-4">
+                                        <label className="label">Status</label>
+                                        <select className="input" name="status" value={formData.status} onChange={handleInputChange}>
+                                            <option value="Currently Working">Currently Working</option>
+                                            <option value="Left">Left</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="flex items-end gap-2">
-                                <button type="submit" className="btn-primary" disabled={adding}>
-                                    {adding ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
-                                    {adding ? 'Adding...' : 'Add'}
+
+                            {/* Banking Information */}
+                            <div>
+                                <h4 className="text-sm font-semibold mb-3 uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Banking Information</h4>
+                                <div className="grid sm:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="label">Bank Name</label>
+                                        <input className="input" name="bankName" placeholder="Bank of America" value={formData.bankName} onChange={handleInputChange} />
+                                    </div>
+                                    <div>
+                                        <label className="label">Account Title</label>
+                                        <input className="input" name="bankTitle" placeholder="John Doe" value={formData.bankTitle} onChange={handleInputChange} />
+                                    </div>
+                                    <div>
+                                        <label className="label">Account Number</label>
+                                        <input className="input" name="bankAccountNumber" placeholder="1234567890" value={formData.bankAccountNumber} onChange={handleInputChange} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+                                <button type="button" className="btn-secondary flex-1" onClick={() => setShowForm(false)}>Cancel</button>
+                                <button type="submit" className="btn-primary flex-1 justify-center" disabled={saving}>
+                                    {saving ? <Loader2 size={16} className="animate-spin" /> : (editingId ? <Edit size={16} /> : <UserPlus size={16} />)}
+                                    {saving ? 'Saving...' : (editingId ? 'Save Changes' : 'Add Employee')}
                                 </button>
-                                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
                             </div>
                         </form>
                     </div>
@@ -122,34 +286,53 @@ export default function EmployeesPage() {
                     ) : filtered.length === 0 ? (
                         <div className="p-8 text-center">
                             <Users size={40} className="mx-auto mb-3" style={{ color: 'var(--border)' }} />
-                            <p style={{ color: 'var(--text-secondary)' }}>{search ? 'No results found.' : 'No employees yet. Add one above.'}</p>
+                            <p style={{ color: 'var(--text-secondary)' }}>{search ? 'No results found.' : 'No employees yet.'}</p>
                         </div>
                     ) : (
                         <div className="table-wrapper">
                             <table>
                                 <thead><tr>
-                                    <th>Name</th><th>Email</th><th>Registered</th><th>Actions</th>
+                                    <th>Employee</th><th>Position</th><th>Contact</th><th>Status</th><th>Actions</th>
                                 </tr></thead>
                                 <tbody>
                                     {filtered.map(emp => (
                                         <tr key={emp.id}>
                                             <td>
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm"
-                                                        style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
-                                                        {emp.name.charAt(0).toUpperCase()}
+                                                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm shrink-0 overflow-hidden"
+                                                        style={{ background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid var(--border)' }}>
+                                                        {emp.picture ? (
+                                                            <img src={emp.picture} alt={emp.name} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            emp.name.charAt(0).toUpperCase()
+                                                        )}
                                                     </div>
-                                                    <span className="font-medium">{emp.name}</span>
+                                                    <div>
+                                                        <div className="font-medium">{emp.name}</div>
+                                                        <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{emp.email}</div>
+                                                    </div>
                                                 </div>
                                             </td>
-                                            <td style={{ color: 'var(--text-secondary)' }}>{emp.email}</td>
                                             <td style={{ color: 'var(--text-secondary)' }}>
-                                                {new Date(emp.createdAt).toLocaleDateString()}
+                                                {emp.jobPosition || '—'}
+                                            </td>
+                                            <td style={{ color: 'var(--text-secondary)' }}>
+                                                {emp.contactNumber || '—'}
                                             </td>
                                             <td>
-                                                <button onClick={() => setConfirmDelete(emp)} className="btn-danger" style={{ padding: '0.4rem 0.8rem' }}>
-                                                    <Trash2 size={14} /> Delete
-                                                </button>
+                                                <span className={`px-2 py-1 rounded text-xs font-semibold ${emp.status === 'Left' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+                                                    {emp.status || 'Currently Working'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div className="flex items-center gap-2">
+                                                    <button onClick={() => handleOpenEdit(emp)} className="btn-secondary" style={{ padding: '0.4rem 0.8rem' }}>
+                                                        <Edit size={14} /> Edit
+                                                    </button>
+                                                    <button onClick={() => setConfirmDelete(emp)} className="btn-danger" style={{ padding: '0.4rem 0.8rem' }}>
+                                                        <Trash2 size={14} /> Delete
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
