@@ -4,9 +4,10 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import {
-    LayoutDashboard, Users, FileText, CreditCard, Building2, LogOut, ShieldCheck, DollarSign, CalendarCheck2
+    LayoutDashboard, Users, FileText, CreditCard, Building2, LogOut, ShieldCheck, DollarSign, CalendarCheck2, Award
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { canManageEmployees, canViewTeam, isFullAccessRole } from '@/lib/roleAccess';
 
 const adminLinks = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -21,13 +22,31 @@ const adminLinks = [
 
 const employeeLinks = [
     { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/employee/performance', label: 'Performance Record', icon: Award },
+    { href: '/employee/salary-slips', label: 'Salary Slips', icon: FileText },
+    { href: '/bank-info', label: 'Bank Info', icon: Building2 },
+];
+
+const leadLinks = [
+    { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/employee/performance', label: 'Team Performance', icon: Award },
+    { href: '/employee/salary-slips', label: 'Salary Slips', icon: FileText },
     { href: '/bank-info', label: 'Bank Info', icon: Building2 },
 ];
 
 export default function Sidebar() {
     const { user, logout } = useAuth();
     const pathname = usePathname();
-    const links = user?.role === 'admin' ? adminLinks : employeeLinks;
+    const links = isFullAccessRole(user?.role)
+        ? adminLinks
+        : canViewTeam(user?.role)
+            ? leadLinks
+            : employeeLinks;
+
+    const filteredLinks = links.filter((link) => {
+        if (link.href === '/admin/employees') return canManageEmployees(user?.role);
+        return true;
+    });
 
     return (
         <aside className="fixed left-0 top-0 h-full w-64 flex flex-col"
@@ -43,7 +62,7 @@ export default function Sidebar() {
                     <div>
                         <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Devsinn Team Management Portal</p>
                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            {user?.role === 'admin' ? 'Admin Panel' : 'Employee Portal'}
+                            {isFullAccessRole(user?.role) ? 'Management Portal' : canViewTeam(user?.role) ? 'Lead Portal' : 'Employee Portal'}
                         </p>
                     </div>
                 </div>
@@ -51,7 +70,7 @@ export default function Sidebar() {
 
             {/* Nav */}
             <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-                {links.map(({ href, label, icon: Icon }) => (
+                {filteredLinks.map(({ href, label, icon: Icon }) => (
                     <Link
                         key={href}
                         href={href}

@@ -3,15 +3,34 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Header from '@/components/Header';
 import { getEmployees, addEmployee, updateEmployee, deleteEmployee } from '@/lib/googleSheets';
-import { Employee } from '@/types';
+import { Department, Employee, UserRole } from '@/types';
 import { UserPlus, Trash2, Search, Loader2, Users, Edit, Image as ImageIcon, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { uploadImage } from '@/lib/uploadImage';
 
-const initialForm = {
+type EmployeeFormData = {
+    name: string;
+    email: string;
+    fatherName: string;
+    cnic: string;
+    picture: string;
+    bankName: string;
+    bankTitle: string;
+    bankAccountNumber: string;
+    address: string;
+    jobPosition: string;
+    role: UserRole;
+    department: Department;
+    leadId: string;
+    status: string;
+    joiningDate: string;
+    contactNumber: string;
+};
+
+const initialForm: EmployeeFormData = {
     name: '', email: '', fatherName: '', cnic: '', picture: '',
     bankName: '', bankTitle: '', bankAccountNumber: '', address: '',
-    jobPosition: '', status: 'Currently Working', joiningDate: '', contactNumber: ''
+    jobPosition: '', role: 'employee', department: '', leadId: '', status: 'Currently Working', joiningDate: '', contactNumber: ''
 };
 
 export default function EmployeesPage() {
@@ -21,7 +40,7 @@ export default function EmployeesPage() {
     
     // Form state
     const [showForm, setShowForm] = useState(false);
-    const [formData, setFormData] = useState(initialForm);
+    const [formData, setFormData] = useState<EmployeeFormData>(initialForm);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
@@ -52,8 +71,18 @@ export default function EmployeesPage() {
         e.contactNumber?.toLowerCase().includes(search.toLowerCase())
     );
 
+    const leads = employees.filter((e) => e.role === 'lead' && e.status !== 'Left');
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        if (name === 'role') {
+            setFormData((prev) => ({ ...prev, role: value as UserRole }));
+            return;
+        }
+        if (name === 'department') {
+            setFormData((prev) => ({ ...prev, department: value as Department }));
+            return;
+        }
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -66,8 +95,9 @@ export default function EmployeesPage() {
             const url = await uploadImage(file);
             setFormData(prev => ({ ...prev, picture: url }));
             toast.success('Picture uploaded');
-        } catch (error: any) {
-            toast.error(error.message || 'Failed to upload picture');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to upload picture';
+            toast.error(message);
         } finally {
             setUploadingImage(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -86,6 +116,7 @@ export default function EmployeesPage() {
             cnic: emp.cnic || '', picture: emp.picture || '', bankName: emp.bankName || '',
             bankTitle: emp.bankTitle || '', bankAccountNumber: emp.bankAccountNumber || '',
             address: emp.address || '', jobPosition: emp.jobPosition || '',
+            role: emp.role || 'employee', department: emp.department || '', leadId: emp.leadId || '',
             status: emp.status || 'Currently Working', joiningDate: emp.joiningDate || '',
             contactNumber: emp.contactNumber || ''
         });
@@ -98,6 +129,10 @@ export default function EmployeesPage() {
         e.preventDefault();
         if (!formData.name.trim() || !formData.email.trim()) { 
             toast.error('Name and email are required.'); return; 
+        }
+        if (formData.role === 'lead' && !formData.department) {
+            toast.error('Department is required for lead role.');
+            return;
         }
         setSaving(true);
         try {
@@ -196,7 +231,7 @@ export default function EmployeesPage() {
                                             <input className="input" name="name" placeholder="John Doe" value={formData.name} onChange={handleInputChange} required />
                                         </div>
                                         <div>
-                                            <label className="label">Father's Name</label>
+                                            <label className="label">Father&apos;s Name</label>
                                             <input className="input" name="fatherName" placeholder="Richard Doe" value={formData.fatherName} onChange={handleInputChange} />
                                         </div>
                                         <div>
@@ -231,9 +266,42 @@ export default function EmployeesPage() {
                                         <input className="input" name="jobPosition" placeholder="Software Engineer" value={formData.jobPosition} onChange={handleInputChange} />
                                     </div>
                                     <div>
+                                        <label className="label">Role</label>
+                                        <select className="input" name="role" value={formData.role} onChange={handleInputChange}>
+                                            <option value="employee">Employee</option>
+                                            <option value="lead">Lead</option>
+                                            <option value="manager">Manager</option>
+                                            <option value="hr">HR</option>
+                                            <option value="higher-management">Higher Management</option>
+                                        </select>
+                                    </div>
+                                    <div>
                                         <label className="label">Joining Date</label>
                                         <input type="date" className="input" name="joiningDate" value={formData.joiningDate} onChange={handleInputChange} />
                                     </div>
+                                    {formData.role === 'lead' && (
+                                        <div>
+                                            <label className="label">Department</label>
+                                            <select className="input" name="department" value={formData.department} onChange={handleInputChange} required>
+                                                <option value="">Select Department</option>
+                                                <option value="web">Web</option>
+                                                <option value="app">App</option>
+                                                <option value="backend">Backend</option>
+                                                <option value="overall">Overall</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                    {formData.role !== 'lead' && formData.role !== 'higher-management' && formData.role !== 'hr' && (
+                                        <div>
+                                            <label className="label">Reporting Lead</label>
+                                            <select className="input" name="leadId" value={formData.leadId} onChange={handleInputChange}>
+                                                <option value="">None</option>
+                                                {leads.map((lead) => (
+                                                    <option key={lead.id} value={lead.id}>{lead.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
                                     <div className="sm:col-span-2 md:col-span-4">
                                         <label className="label">Status</label>
                                         <select className="input" name="status" value={formData.status} onChange={handleInputChange}>
@@ -292,7 +360,7 @@ export default function EmployeesPage() {
                         <div className="table-wrapper">
                             <table>
                                 <thead><tr>
-                                    <th>Employee</th><th>Position</th><th>Contact</th><th>Status</th><th>Actions</th>
+                                    <th>Employee</th><th>Role / Department</th><th>Contact</th><th>Status</th><th>Actions</th>
                                 </tr></thead>
                                 <tbody>
                                     {filtered.map(emp => (
@@ -314,7 +382,7 @@ export default function EmployeesPage() {
                                                 </div>
                                             </td>
                                             <td style={{ color: 'var(--text-secondary)' }}>
-                                                {emp.jobPosition || '—'}
+                                                {(emp.role || 'employee').toUpperCase()} {emp.department ? `(${emp.department})` : ''}
                                             </td>
                                             <td style={{ color: 'var(--text-secondary)' }}>
                                                 {emp.contactNumber || '—'}

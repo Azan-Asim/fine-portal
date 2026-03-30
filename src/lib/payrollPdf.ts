@@ -15,7 +15,7 @@ function formatNumber(value: number): string {
     return Number(value || 0).toLocaleString('en-PK');
 }
 
-export function generatePayrollLetterPdf(draft: PayrollDraft, existingWindow?: Window | null) {
+export function generatePayrollLetterPdf(draft: PayrollDraft, existingWindow?: Window | null): string {
   const limitedLineItems = draft.lineItems.slice(0, MAX_PAYROLL_EMPLOYEES_PER_PAGE);
     const monthLabel = `${draft.salaryMonth} - ${draft.salaryYear}`;
     const dateLabel = new Date(draft.payrollDate).toLocaleDateString('en-GB');
@@ -193,4 +193,6 @@ export function generatePayrollLetterPdf(draft: PayrollDraft, existingWindow?: W
     popup.document.open();
     popup.document.write(html);
     popup.document.close();
+
+    return html;
 }

@@ -14,6 +14,14 @@ export function generateEmployeeAttendancePdf(summary: EmployeeMonthlyAttendance
     const employeeEmail = summary.employee?.email || '-';
     const employeeRole = summary.employee?.jobPosition || '-';
 
+    const performanceSummary = [
+      `W1: ${summary.performance?.week1Comment || '-'} (${Number(summary.performance?.week1Score || 0).toFixed(1)}/10)`,
+      `W2: ${summary.performance?.week2Comment || '-'} (${Number(summary.performance?.week2Score || 0).toFixed(1)}/10)`,
+      `W3: ${summary.performance?.week3Comment || '-'} (${Number(summary.performance?.week3Score || 0).toFixed(1)}/10)`,
+      `W4: ${summary.performance?.week4Comment || '-'} (${Number(summary.performance?.week4Score || 0).toFixed(1)}/10)`,
+      `Final: ${summary.performance?.finalComment || '-'} (${Number(summary.performance?.finalScore || 0).toFixed(1)}/10)`,
+    ];
+
     const rows = summary.records
         .map((r, index) => {
             const sessions = r.workSessions.map((s) => `${escapeHtml(s.checkIn)} - ${escapeHtml(s.checkOut)}`).join(', ') || '-';
@@ -26,6 +34,7 @@ export function generateEmployeeAttendancePdf(summary: EmployeeMonthlyAttendance
                     <td>${escapeHtml(sessions)}</td>
                     <td>${Number(r.workingHours || 0).toFixed(2)}</td>
                     <td>${Number(r.trackingHours || 0).toFixed(2)}</td>
+                    <td>${escapeHtml(performanceSummary.join(' | '))}</td>
                 </tr>
             `;
         })
@@ -36,7 +45,7 @@ export function generateEmployeeAttendancePdf(summary: EmployeeMonthlyAttendance
 <html>
 <head>
 <meta charset="utf-8" />
-<title>Attendance Record - ${escapeHtml(employeeName)}</title>
+<title>Performance Record - ${escapeHtml(employeeName)}</title>
 <style>
   @page { size: A4; margin: 0.6in; }
   body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; }
@@ -52,7 +61,7 @@ export function generateEmployeeAttendancePdf(summary: EmployeeMonthlyAttendance
 </style>
 </head>
 <body>
-  <h1>Monthly Attendance Report</h1>
+  <h1>Monthly Performance Record</h1>
   <div class="muted">Employee: ${escapeHtml(employeeName)} | ${escapeHtml(employeeRole)} | ${escapeHtml(employeeEmail)}</div>
   <div class="muted">Month: ${summary.month} / ${summary.year}</div>
 
@@ -63,6 +72,7 @@ export function generateEmployeeAttendancePdf(summary: EmployeeMonthlyAttendance
     <div class="card"><div class="label">Total Leaves</div><div class="value">${summary.totalLeaves}</div></div>
     <div class="card"><div class="label">Total Absents</div><div class="value">${summary.totalAbsents}</div></div>
     <div class="card"><div class="label">Total Holidays</div><div class="value">${summary.totalHolidays}</div></div>
+    <div class="card"><div class="label">Performance Score</div><div class="value">${Number(summary.totalPerformanceScore || 0).toFixed(1)} / ${Number(summary.maxPerformanceScore || 50).toFixed(0)}</div></div>
   </div>
 
   <table>
@@ -75,10 +85,11 @@ export function generateEmployeeAttendancePdf(summary: EmployeeMonthlyAttendance
         <th>Check In / Out</th>
         <th>Working Hours</th>
         <th>Tracking Hours</th>
+        <th>Weekly Performance Notes (1-4)</th>
       </tr>
     </thead>
     <tbody>
-      ${rows || '<tr><td colspan="7">No attendance records in selected month.</td></tr>'}
+      ${rows || '<tr><td colspan="8">No performance records in selected month.</td></tr>'}
     </tbody>
   </table>
 

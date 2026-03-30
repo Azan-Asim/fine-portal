@@ -13,6 +13,10 @@ import {
     WorkSession,
     BreakSession,
     EmployeeMonthlyAttendanceSummary,
+    PerformanceRecord,
+    SalarySlip,
+    UserRole,
+    Department,
 } from '@/types';
 
 async function request<T>(action: string, data?: object): Promise<T> {
@@ -152,6 +156,22 @@ export async function addPayrollRecord(data: Omit<PayrollRecord, 'id' | 'created
     return request<PayrollRecord>('addPayrollRecord', data);
 }
 
+export async function updatePayrollRecord(id: string, updates: Partial<PayrollRecord>): Promise<PayrollRecord> {
+    return request<PayrollRecord>('updatePayrollRecord', { id, updates });
+}
+
+export async function addSalarySlipsForPayroll(payrollId: string): Promise<SalarySlip[]> {
+    return request<SalarySlip[]>('addSalarySlipsForPayroll', { payrollId });
+}
+
+export async function getSalarySlipsForEmployee(employeeId: string): Promise<SalarySlip[]> {
+    return request<SalarySlip[]>('getSalarySlipsForEmployee', { employeeId });
+}
+
+export async function getSalarySlipsByPayroll(payrollId: string): Promise<SalarySlip[]> {
+    return request<SalarySlip[]>('getSalarySlipsByPayroll', { payrollId });
+}
+
 // ============ ATTENDANCE ============
 
 export async function getAttendanceByDate(date: string): Promise<AttendanceRecord[]> {
@@ -167,6 +187,10 @@ export async function upsertAttendanceRecord(data: {
     trackingHours?: number;
     workSessions?: WorkSession[];
     breakSessions?: BreakSession[];
+    week1Comment?: string;
+    week2Comment?: string;
+    week3Comment?: string;
+    week4Comment?: string;
 }): Promise<AttendanceRecord> {
     return request<AttendanceRecord>('upsertAttendanceRecord', data);
 }
@@ -181,4 +205,40 @@ export async function getEmployeeMonthlyAttendance(
     year: number
 ): Promise<EmployeeMonthlyAttendanceSummary> {
     return request<EmployeeMonthlyAttendanceSummary>('getEmployeeMonthlyAttendance', { employeeId, month, year });
+}
+
+export async function upsertPerformanceRecord(data: {
+    employeeId: string;
+    leadId?: string;
+    month: number;
+    year: number;
+    week1Comment?: string;
+    week1Score?: number;
+    week2Comment?: string;
+    week2Score?: number;
+    week3Comment?: string;
+    week3Score?: number;
+    week4Comment?: string;
+    week4Score?: number;
+    finalReviewerId?: string;
+    finalComment?: string;
+    finalScore?: number;
+}): Promise<PerformanceRecord> {
+    return request<PerformanceRecord>('upsertPerformanceRecord', data);
+}
+
+export async function getPerformanceRecord(employeeId: string, month: number, year: number): Promise<PerformanceRecord | null> {
+    return request<PerformanceRecord | null>('getPerformanceRecord', { employeeId, month, year });
+}
+
+export async function getRolePermissions(role: UserRole): Promise<{
+    fullAccess: boolean;
+    canViewTeam: boolean;
+    canViewOwn: boolean;
+}> {
+    return request('getRolePermissions', { role });
+}
+
+export function validateLeadDepartment(role: UserRole, department: Department): boolean {
+    return role !== 'lead' || !!department;
 }

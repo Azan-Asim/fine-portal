@@ -18,14 +18,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Apps Script URL is not configured' }, { status: 500 });
         }
 
-        const url = new URL(appsScriptUrl);
-        url.searchParams.set('action', action);
-        if (payload !== undefined) {
-            url.searchParams.set('payload', JSON.stringify(payload));
-        }
-
-        const res = await fetch(url.toString(), {
-            method: 'GET',
+        const res = await fetch(appsScriptUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ action, payload }),
             redirect: 'follow',
             cache: 'no-store',
         });

@@ -78,8 +78,9 @@ export default function AttendancePage() {
 
             setRecordsByEmployee(mapped);
             setDraftByEmployee(drafts);
-        } catch (error: any) {
-            toast.error(error.message || 'Failed to load attendance data.');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to load attendance data.';
+            toast.error(message);
         } finally {
             setLoading(false);
         }
@@ -113,8 +114,9 @@ export default function AttendancePage() {
             await setHolidayForDate(date);
             setDayType('Holiday');
             toast.success('Holiday marked for selected date.');
-        } catch (error: any) {
-            toast.error(error.message || 'Failed to mark holiday.');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to mark holiday.';
+            toast.error(message);
         }
     };
 
@@ -140,8 +142,9 @@ export default function AttendancePage() {
 
             setRecordsByEmployee((prev) => ({ ...prev, [employeeId]: saved }));
             toast.success('Attendance saved.');
-        } catch (error: any) {
-            toast.error(error.message || 'Failed to save attendance.');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to save attendance.';
+            toast.error(message);
         } finally {
             setSavingId('');
         }

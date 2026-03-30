@@ -6,7 +6,8 @@ import { AuthUser, UserRole } from '@/types';
 interface AuthContextType {
     user: AuthUser | null;
     isLoading: boolean;
-    login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+    login: (email: string) => Promise<{ success: boolean; error?: string }>;
+    loginWithGoogleToken: (credential: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => void;
 }
 
@@ -28,44 +29,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
     }, []);
 
-    const login = async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
-        const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-        const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
+    const findRegisteredUser = async (email: string): Promise<AuthUser | null> => {
+        const normalizedEmail = email.trim().toLowerCase();
+        const { getEmployees } = await import('@/lib/googleSheets');
+        const employees = await getEmployees();
+        const emp = employees.find((e) => e.email.toLowerCase() === normalizedEmail);
+        if (!emp) return null;
+        const role = (emp.role || 'employee') as UserRole;
+        return {
+            id: emp.id,
+            name: emp.name,
+            email: emp.email,
+            role,
+            department: emp.department,
+            leadId: emp.leadId,
+        };
+    };
 
-        // Admin login
-        if (email === adminEmail && password === adminPassword) {
-            const adminUser: AuthUser = {
-                id: 'admin-001',
-                name: 'Admin',
-                email: adminEmail!,
-                role: 'admin',
-            };
-            setUser(adminUser);
-            localStorage.setItem('fine_portal_user', JSON.stringify(adminUser));
-            return { success: true };
-        }
+    const completeLogin = (nextUser: AuthUser) => {
+        setUser(nextUser);
+        localStorage.setItem('fine_portal_user', JSON.stringify(nextUser));
+    };
 
-        // Employee login (email only)
-        if (!password) {
-            try {
-                const { getEmployees } = await import('@/lib/googleSheets');
-                const employees = await getEmployees();
-                const emp = employees.find((e) => e.email.toLowerCase() === email.toLowerCase());
-                if (emp) {
-                    const empUser: AuthUser = {
-                        id: emp.id,
-                        name: emp.name,
-                        email: emp.email,
-                        role: 'employee',
-                    };
-                    setUser(empUser);
-                    localStorage.setItem('fine_portal_user', JSON.stringify(empUser));
-                    return { success: true };
-                }
-                return { success: false, error: 'No employee found with that email.' };
-            } catch {
-                return { success: false, error: 'Failed to verify employee. Please try again.' };
+    const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
+        try {
+            const registered = await findRegisteredUser(email);
+            if (!registered) {
+                return { success: false, error: 'This email is not registered by admin.' };
             }
+            completeLogin(registered);
+            return { success: true };
+        } catch {
+            return { success: false, error: 'Failed to verify registered user.' };
+        }
+    };
+
+    const loginWithGoogleToken = async (credential: string): Promise<{ success: boolean; error?: string }> => {
+        try {
+            const parts = String(credential || '').split('.');
+            if (parts.length < 2) return { success: false, error: 'Invalid Google token.' };
+            const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            const payload = JSON.parse(atob(base64));
+            const email = String(payload?.email || '').trim().toLowerCase();
+            const verified = Boolean(payload?.email_verified);
+
+            if (!email || !verified) {
+                return { success: false, error: 'Unable to verify Google account email.' };
+            }
+
+            const registered = await findRegisteredUser(email);
+            if (!registered) {
+                return { success: false, error: 'Your email is not registered by admin.' };
+            }
+
+            completeLogin(registered);
+            return { success: true };
+        } catch {
+            return { success: false, error: 'Google login failed.' };
         }
 
         return { success: false, error: 'Invalid credentials.' };
@@ -77,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+        <AuthContext.Provider value={{ user, isLoading, login, loginWithGoogleToken, logout }}>
             {children}
         </AuthContext.Provider>
     );

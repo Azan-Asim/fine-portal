@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Sidebar from '@/components/Sidebar';
+import { isFullAccessRole } from '@/lib/roleAccess';
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
     const { user, isLoading } = useAuth();
@@ -12,11 +13,11 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
     useEffect(() => {
         if (!isLoading) {
             if (!user) router.push('/login');
-            else if (user.role !== 'employee') router.push('/admin/dashboard');
+            else if (isFullAccessRole(user.role)) router.push('/admin/dashboard');
         }
     }, [user, isLoading, router]);
 
-    if (isLoading || !user || user.role !== 'employee') {
+    if (isLoading || !user || isFullAccessRole(user.role)) {
         return (
             <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
                 <div className="spinner" style={{ width: 36, height: 36 }} />

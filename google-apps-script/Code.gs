@@ -2,8 +2,8 @@
  * Devsinn Team Management Portal - Google Apps Script
  * Deploy as a Web App (Execute as: Me, Access: Anyone)
  * 
- * Sheet names: "Employees", "Penalties", "Penalty Expenses", "Company Expenses", "Company Income", "Payroll Letters", "Attendance"
- * All requests use GET with ?action=xxx&payload=JSON
+ * Sheet names: "Employees", "Penalties", "Penalty Expenses", "Company Expenses", "Company Income", "Payroll Letters", "Attendance", "Performance Records", "Salary Slips"
+ * Requests support GET (?action=xxx&payload=JSON) and POST JSON body ({ action, payload })
  */
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
@@ -14,6 +14,8 @@ const COMPANY_EXPENSES_SHEET = 'Company Expenses';
 const COMPANY_INCOME_SHEET = 'Company Income';
 const PAYROLL_SHEET = 'Payroll Letters';
 const ATTENDANCE_SHEET = 'Attendance';
+const PERFORMANCE_SHEET = 'Performance Records';
+const SALARY_SLIPS_SHEET = 'Salary Slips';
 
 function respond(data) {
   return ContentService
@@ -61,12 +63,18 @@ function doGet(e) {
     // Payroll
     if (action === 'getPayrollRecords') return respond(getPayrollRecords());
     if (action === 'addPayrollRecord') return respond(addPayrollRecord(payload));
+    if (action === 'updatePayrollRecord') return respond(updatePayrollRecord(payload.id, payload.updates));
+    if (action === 'addSalarySlipsForPayroll') return respond(addSalarySlipsForPayroll(payload.payrollId));
+    if (action === 'getSalarySlipsForEmployee') return respond(getSalarySlipsForEmployee(payload.employeeId));
+    if (action === 'getSalarySlipsByPayroll') return respond(getSalarySlipsByPayroll(payload.payrollId));
 
     // Attendance
     if (action === 'getAttendanceByDate') return respond(getAttendanceByDate(payload.date));
     if (action === 'upsertAttendanceRecord') return respond(upsertAttendanceRecord(payload));
     if (action === 'setHolidayForDate') return respond(setHolidayForDate(payload.date));
     if (action === 'getEmployeeMonthlyAttendance') return respond(getEmployeeMonthlyAttendance(payload.employeeId, payload.month, payload.year));
+    if (action === 'upsertPerformanceRecord') return respond(upsertPerformanceRecord(payload));
+    if (action === 'getPerformanceRecord') return respond(getPerformanceRecord(payload.employeeId, payload.month, payload.year));
 
     return respondError('Unknown action: ' + action);
   } catch (err) {
@@ -77,8 +85,8 @@ function doGet(e) {
 // Keep doPost as fallback (not used by frontend anymore)
 function doPost(e) {
   try {
-    const body = JSON.parse(e.postData.contents);
-    return doGet({ parameter: { action: body.action, payload: JSON.stringify(body) } });
+    const body = JSON.parse(e.postData.contents || '{}');
+    return doGet({ parameter: { action: body.action, payload: JSON.stringify(body.payload || {}) } });
   } catch (err) {
     return respondError(err.message);
   }
@@ -91,7 +99,7 @@ function getSheet(name) {
   if (!sheet) {
     sheet = SS.insertSheet(name);
     if (name === EMPLOYEES_SHEET) {
-      sheet.appendRow(['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Status', 'Joining Date', 'Contact Number', 'Created At']);
+      sheet.appendRow(['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Created At']);
     } else if (name === PENALTIES_SHEET) {
       sheet.appendRow(['ID', 'Employee ID', 'Employee Name', 'Email', 'Reason',
         'Reference URL', 'Amount', 'Date', 'Status', 'Payment Proof',
@@ -103,11 +111,29 @@ function getSheet(name) {
     } else if (name === COMPANY_INCOME_SHEET) {
       sheet.appendRow(['ID', 'Date', 'Description', 'Amount', 'Received By', 'Receipt URL', 'Notes', 'Created At']);
     } else if (name === PAYROLL_SHEET) {
-      sheet.appendRow(['ID', 'Payroll Date', 'Cheque No', 'Salary Month', 'Salary Year', 'Prepared By', 'Designation', 'Total', 'Line Items JSON', 'Created At']);
+      sheet.appendRow(['ID', 'Payroll Date', 'Cheque No', 'Salary Month', 'Salary Year', 'Prepared By', 'Designation', 'Total', 'Line Items JSON', 'Payroll PDF HTML', 'Cheque Proof URL', 'Salary Received', 'Salary Received At', 'Created At']);
     } else if (name === ATTENDANCE_SHEET) {
-      sheet.appendRow(['ID', 'Employee ID', 'Date', 'Day Type', 'Status', 'Leave Reason', 'Tracking Hours', 'Working Hours', 'Work Sessions JSON', 'Break Sessions JSON', 'Created At', 'Updated At']);
+      sheet.appendRow(['ID', 'Employee ID', 'Date', 'Day Type', 'Status', 'Leave Reason', 'Tracking Hours', 'Working Hours', 'Work Sessions JSON', 'Break Sessions JSON', 'Week1 Comment', 'Week2 Comment', 'Week3 Comment', 'Week4 Comment', 'Created At', 'Updated At']);
+    } else if (name === PERFORMANCE_SHEET) {
+      sheet.appendRow(['ID', 'Employee ID', 'Lead ID', 'Month', 'Year', 'Week1 Comment', 'Week1 Score', 'Week2 Comment', 'Week2 Score', 'Week3 Comment', 'Week3 Score', 'Week4 Comment', 'Week4 Score', 'Final Reviewer ID', 'Final Comment', 'Final Score', 'Created At', 'Updated At']);
+    } else if (name === SALARY_SLIPS_SHEET) {
+      sheet.appendRow(['ID', 'Payroll ID', 'Employee ID', 'Employee Name', 'Salary Month', 'Salary Year', 'Pay Date', 'Amount', 'Basic Pay', 'Leave Deduction', 'Late Deduction', 'Total Deductions', 'Net Pay', 'Working Days', 'Paid Leave', 'Unpaid Leave', 'Late Comings', 'Slip HTML', 'Created At']);
     }
   }
+
+  if (name === EMPLOYEES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 18) {
+    sheet.getRange(1, 1, 1, 18).setValues([['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Created At']]);
+  }
+  if (name === PAYROLL_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 14) {
+    sheet.getRange(1, 1, 1, 14).setValues([['ID', 'Payroll Date', 'Cheque No', 'Salary Month', 'Salary Year', 'Prepared By', 'Designation', 'Total', 'Line Items JSON', 'Payroll PDF HTML', 'Cheque Proof URL', 'Salary Received', 'Salary Received At', 'Created At']]);
+  }
+  if (name === ATTENDANCE_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 16) {
+    sheet.getRange(1, 1, 1, 16).setValues([['ID', 'Employee ID', 'Date', 'Day Type', 'Status', 'Leave Reason', 'Tracking Hours', 'Working Hours', 'Work Sessions JSON', 'Break Sessions JSON', 'Week1 Comment', 'Week2 Comment', 'Week3 Comment', 'Week4 Comment', 'Created At', 'Updated At']]);
+  }
+  if (name === PERFORMANCE_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 18) {
+    sheet.getRange(1, 1, 1, 18).setValues([['ID', 'Employee ID', 'Lead ID', 'Month', 'Year', 'Week1 Comment', 'Week1 Score', 'Week2 Comment', 'Week2 Score', 'Week3 Comment', 'Week3 Score', 'Week4 Comment', 'Week4 Score', 'Final Reviewer ID', 'Final Comment', 'Final Score', 'Created At', 'Updated At']]);
+  }
+
   return sheet;
 }
 
@@ -125,7 +151,7 @@ function sheetToObjects(sheet, headers) {
   });
 }
 
-const E_HEADERS = ['id', 'name', 'email', 'fatherName', 'cnic', 'picture', 'bankName', 'bankTitle', 'bankAccountNumber', 'address', 'jobPosition', 'status', 'joiningDate', 'contactNumber', 'createdAt'];
+const E_HEADERS = ['id', 'name', 'email', 'fatherName', 'cnic', 'picture', 'bankName', 'bankTitle', 'bankAccountNumber', 'address', 'jobPosition', 'role', 'department', 'leadId', 'status', 'joiningDate', 'contactNumber', 'createdAt'];
 
 function getEmployees() {
   const sheet = getSheet(EMPLOYEES_SHEET);
@@ -140,14 +166,15 @@ function addEmployee(body) {
   const row = [
     id, body.name, body.email, body.fatherName || '', body.cnic || '', body.picture || '',
     body.bankName || '', body.bankTitle || '', body.bankAccountNumber || '', body.address || '',
-    body.jobPosition || '', body.status || '', body.joiningDate || '', body.contactNumber || '', createdAt
+    body.jobPosition || '', body.role || 'employee', body.department || '', body.leadId || '', body.status || '', body.joiningDate || '', body.contactNumber || '', createdAt
   ];
   sheet.appendRow(row);
   return { 
     id, name: body.name, email: body.email, 
     fatherName: body.fatherName || '', cnic: body.cnic || '', picture: body.picture || '',
     bankName: body.bankName || '', bankTitle: body.bankTitle || '', bankAccountNumber: body.bankAccountNumber || '',
-    address: body.address || '', jobPosition: body.jobPosition || '', status: body.status || '',
+    address: body.address || '', jobPosition: body.jobPosition || '', role: body.role || 'employee',
+    department: body.department || '', leadId: body.leadId || '', status: body.status || '',
     joiningDate: body.joiningDate || '', contactNumber: body.contactNumber || '', createdAt
   };
 }
@@ -157,7 +184,7 @@ function updateEmployee(id, updates) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === id) {
-      const colMap = { id: 0, name: 1, email: 2, fatherName: 3, cnic: 4, picture: 5, bankName: 6, bankTitle: 7, bankAccountNumber: 8, address: 9, jobPosition: 10, status: 11, joiningDate: 12, contactNumber: 13, createdAt: 14 };
+      const colMap = { id: 0, name: 1, email: 2, fatherName: 3, cnic: 4, picture: 5, bankName: 6, bankTitle: 7, bankAccountNumber: 8, address: 9, jobPosition: 10, role: 11, department: 12, leadId: 13, status: 14, joiningDate: 15, contactNumber: 16, createdAt: 17 };
       for (const key in updates) {
         if (colMap[key] !== undefined) {
           sheet.getRange(i + 1, colMap[key] + 1).setValue(updates[key]);
@@ -341,7 +368,7 @@ function deleteCompanyIncome(id) {
 
 // ============ PAYROLL ============
 
-const PR_HEADERS = ['id', 'payrollDate', 'chequeNo', 'salaryMonth', 'salaryYear', 'preparedBy', 'designation', 'total', 'lineItems', 'createdAt'];
+const PR_HEADERS = ['id', 'payrollDate', 'chequeNo', 'salaryMonth', 'salaryYear', 'preparedBy', 'designation', 'total', 'lineItems', 'payrollPdfHtml', 'chequeProofUrl', 'salaryReceived', 'salaryReceivedAt', 'createdAt'];
 
 function getPayrollRecords() {
   const sheet = getSheet(PAYROLL_SHEET);
@@ -365,6 +392,10 @@ function getPayrollRecords() {
       designation: r.designation,
       total: Number(r.total || 0),
       lineItems: parsedItems,
+      payrollPdfHtml: r.payrollPdfHtml || '',
+      chequeProofUrl: r.chequeProofUrl || '',
+      salaryReceived: String(r.salaryReceived).toLowerCase() === 'true',
+      salaryReceivedAt: r.salaryReceivedAt || '',
       createdAt: r.createdAt,
     };
   });
@@ -387,6 +418,10 @@ function addPayrollRecord(body) {
     body.designation || '',
     Number(body.total || 0),
     lineItemsJson,
+    body.payrollPdfHtml || '',
+    body.chequeProofUrl || '',
+    body.salaryReceived ? 'true' : 'false',
+    body.salaryReceivedAt || '',
     createdAt,
   ];
 
@@ -402,13 +437,72 @@ function addPayrollRecord(body) {
     designation: body.designation || '',
     total: Number(body.total || 0),
     lineItems: safeLineItems,
+    payrollPdfHtml: body.payrollPdfHtml || '',
+    chequeProofUrl: body.chequeProofUrl || '',
+    salaryReceived: !!body.salaryReceived,
+    salaryReceivedAt: body.salaryReceivedAt || '',
     createdAt,
   };
 }
 
+function updatePayrollRecord(id, updates) {
+  const sheet = getSheet(PAYROLL_SHEET);
+  const data = sheet.getDataRange().getValues();
+
+  const colMap = {
+    payrollDate: 1,
+    chequeNo: 2,
+    salaryMonth: 3,
+    salaryYear: 4,
+    preparedBy: 5,
+    designation: 6,
+    total: 7,
+    lineItems: 8,
+    payrollPdfHtml: 9,
+    chequeProofUrl: 10,
+    salaryReceived: 11,
+    salaryReceivedAt: 12,
+  };
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(id)) {
+      for (const key in updates) {
+        if (colMap[key] === undefined) continue;
+        let value = updates[key];
+        if (key === 'lineItems' && Array.isArray(value)) value = JSON.stringify(value);
+        if (key === 'salaryReceived') value = value ? 'true' : 'false';
+        sheet.getRange(i + 1, colMap[key] + 1).setValue(value === undefined || value === null ? '' : value);
+        data[i][colMap[key]] = value;
+      }
+
+      let parsedItems = [];
+      try { parsedItems = data[i][8] ? JSON.parse(String(data[i][8])) : []; } catch (e) { parsedItems = []; }
+
+      return {
+        id: String(data[i][0]),
+        payrollDate: String(data[i][1] || ''),
+        chequeNo: String(data[i][2] || ''),
+        salaryMonth: String(data[i][3] || ''),
+        salaryYear: Number(data[i][4] || 0),
+        preparedBy: String(data[i][5] || ''),
+        designation: String(data[i][6] || ''),
+        total: Number(data[i][7] || 0),
+        lineItems: parsedItems,
+        payrollPdfHtml: String(data[i][9] || ''),
+        chequeProofUrl: String(data[i][10] || ''),
+        salaryReceived: String(data[i][11] || '').toLowerCase() === 'true',
+        salaryReceivedAt: String(data[i][12] || ''),
+        createdAt: String(data[i][13] || ''),
+      };
+    }
+  }
+
+  throw new Error('Payroll record not found: ' + id);
+}
+
 // ============ ATTENDANCE ============
 
-const A_HEADERS = ['id', 'employeeId', 'date', 'dayType', 'status', 'leaveReason', 'trackingHours', 'workingHours', 'workSessions', 'breakSessions', 'createdAt', 'updatedAt'];
+const A_HEADERS = ['id', 'employeeId', 'date', 'dayType', 'status', 'leaveReason', 'trackingHours', 'workingHours', 'workSessions', 'breakSessions', 'week1Comment', 'week2Comment', 'week3Comment', 'week4Comment', 'createdAt', 'updatedAt'];
 
 function toMinutes(timeStr) {
   if (!timeStr) return null;
@@ -455,7 +549,7 @@ function parseAttendanceObject(rowObj) {
   return {
     id: rowObj.id,
     employeeId: rowObj.employeeId,
-    date: rowObj.date,
+    date: toYmd(rowObj.date),
     dayType: rowObj.dayType || 'Working Day',
     status: rowObj.status || 'Absent',
     leaveReason: rowObj.leaveReason || '',
@@ -463,18 +557,60 @@ function parseAttendanceObject(rowObj) {
     workingHours: Number(rowObj.workingHours || 0),
     workSessions: workSessions,
     breakSessions: breakSessions,
+    week1Comment: rowObj.week1Comment || '',
+    week2Comment: rowObj.week2Comment || '',
+    week3Comment: rowObj.week3Comment || '',
+    week4Comment: rowObj.week4Comment || '',
     createdAt: rowObj.createdAt,
     updatedAt: rowObj.updatedAt,
   };
 }
 
+function toYmd(value) {
+  if (!value) return '';
+  const str = String(value).trim();
+
+  // Pass through already normalized dates.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  // Handle common sheet formats like M/D/YYYY or D/M/YYYY gracefully.
+  const parts = str.split(/[\/\-.]/).map(function(p) { return Number(p); });
+  if (parts.length === 3 && parts.every(function(n) { return !isNaN(n); })) {
+    let year = parts[2];
+    let month = parts[0];
+    let day = parts[1];
+
+    if (year < 100) year += 2000;
+    if (month > 12 && day <= 12) {
+      const temp = month;
+      month = day;
+      day = temp;
+    }
+
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && year >= 2000) {
+      return String(year) + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    }
+  }
+
+  return str;
+}
+
 function getAttendanceByDate(date) {
   if (!date) throw new Error('date is required');
+  const normalizedDate = toYmd(date);
   const sheet = getSheet(ATTENDANCE_SHEET);
   const rows = sheetToObjects(sheet, A_HEADERS);
 
   return rows
-    .filter(r => String(r.date) === String(date))
+    .filter(r => toYmd(r.date) === normalizedDate)
     .map(parseAttendanceObject);
 }
 
@@ -493,7 +629,7 @@ function upsertAttendanceRecord(body) {
 
   const record = {
     employeeId: String(body.employeeId),
-    date: String(body.date),
+    date: toYmd(body.date),
     dayType: body.dayType || 'Working Day',
     status: body.status || 'Absent',
     leaveReason: body.leaveReason || '',
@@ -501,11 +637,15 @@ function upsertAttendanceRecord(body) {
     workingHours: workingHours,
     workSessions: JSON.stringify(safeWorkSessions),
     breakSessions: JSON.stringify(safeBreakSessions),
+    week1Comment: body.week1Comment || '',
+    week2Comment: body.week2Comment || '',
+    week3Comment: body.week3Comment || '',
+    week4Comment: body.week4Comment || '',
     updatedAt: now,
   };
 
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]) === record.employeeId && String(data[i][2]) === record.date) {
+    if (String(data[i][1]) === record.employeeId && toYmd(data[i][2]) === record.date) {
       sheet.getRange(i + 1, 4).setValue(record.dayType);
       sheet.getRange(i + 1, 5).setValue(record.status);
       sheet.getRange(i + 1, 6).setValue(record.leaveReason);
@@ -513,7 +653,11 @@ function upsertAttendanceRecord(body) {
       sheet.getRange(i + 1, 8).setValue(record.workingHours);
       sheet.getRange(i + 1, 9).setValue(record.workSessions);
       sheet.getRange(i + 1, 10).setValue(record.breakSessions);
-      sheet.getRange(i + 1, 12).setValue(record.updatedAt);
+      sheet.getRange(i + 1, 11).setValue(record.week1Comment);
+      sheet.getRange(i + 1, 12).setValue(record.week2Comment);
+      sheet.getRange(i + 1, 13).setValue(record.week3Comment);
+      sheet.getRange(i + 1, 14).setValue(record.week4Comment);
+      sheet.getRange(i + 1, 16).setValue(record.updatedAt);
 
       return {
         id: String(data[i][0]),
@@ -526,7 +670,11 @@ function upsertAttendanceRecord(body) {
         workingHours: record.workingHours,
         workSessions: safeWorkSessions,
         breakSessions: safeBreakSessions,
-        createdAt: String(data[i][10]),
+        week1Comment: record.week1Comment,
+        week2Comment: record.week2Comment,
+        week3Comment: record.week3Comment,
+        week4Comment: record.week4Comment,
+        createdAt: String(data[i][14]),
         updatedAt: record.updatedAt,
       };
     }
@@ -545,6 +693,10 @@ function upsertAttendanceRecord(body) {
     record.workingHours,
     record.workSessions,
     record.breakSessions,
+    record.week1Comment,
+    record.week2Comment,
+    record.week3Comment,
+    record.week4Comment,
     createdAt,
     now,
   ]);
@@ -560,6 +712,10 @@ function upsertAttendanceRecord(body) {
     workingHours: record.workingHours,
     workSessions: safeWorkSessions,
     breakSessions: safeBreakSessions,
+    week1Comment: record.week1Comment,
+    week2Comment: record.week2Comment,
+    week3Comment: record.week3Comment,
+    week4Comment: record.week4Comment,
     createdAt: createdAt,
     updatedAt: now,
   };
@@ -596,12 +752,14 @@ function getEmployeeMonthlyAttendance(employeeId, month, year) {
 
   const isInMonth = function(dateStr) {
     if (!dateStr) return false;
-    const d = new Date(dateStr + 'T00:00:00Z');
+    const d = new Date(toYmd(dateStr) + 'T00:00:00Z');
+    if (isNaN(d.getTime())) return false;
     return d >= start && d < end;
   };
 
   const employeeRecords = rows.filter(r => r.employeeId === String(employeeId) && isInMonth(r.date));
   const holidayDays = rows.filter(r => r.employeeId === 'GLOBAL' && r.status === 'Holiday' && isInMonth(r.date));
+  const performance = getPerformanceRecord(employeeId, m, y);
 
   const totalWorkingHours = employeeRecords.reduce((sum, r) => sum + Number(r.workingHours || 0), 0);
   const totalTrackingHours = employeeRecords.reduce((sum, r) => sum + Number(r.trackingHours || 0), 0);
@@ -620,6 +778,350 @@ function getEmployeeMonthlyAttendance(employeeId, month, year) {
     totalHolidays: totalHolidays,
     totalPresents: totalPresents,
     totalAbsents: totalAbsents,
+    totalPerformanceScore: Number(performance ? performance.totalScore : 0),
+    maxPerformanceScore: Number(performance ? performance.maxScore : 50),
+    performance: performance,
     records: employeeRecords,
   };
+}
+
+const PERF_HEADERS = ['id', 'employeeId', 'leadId', 'month', 'year', 'week1Comment', 'week1Score', 'week2Comment', 'week2Score', 'week3Comment', 'week3Score', 'week4Comment', 'week4Score', 'finalReviewerId', 'finalComment', 'finalScore', 'createdAt', 'updatedAt'];
+
+function normalizeScore(value) {
+  const n = Number(value);
+  if (isNaN(n)) return 0;
+  return Math.max(0, Math.min(10, Number(n.toFixed(2))));
+}
+
+function getPerformanceRecord(employeeId, month, year) {
+  if (!employeeId) throw new Error('employeeId is required');
+  const m = Number(month);
+  const y = Number(year);
+  if (!m || !y) throw new Error('month and year are required');
+
+  const sheet = getSheet(PERFORMANCE_SHEET);
+  const rows = sheetToObjects(sheet, PERF_HEADERS);
+
+  const found = rows.find(r =>
+    String(r.employeeId) === String(employeeId) &&
+    Number(r.month || 0) === m &&
+    Number(r.year || 0) === y
+  );
+
+  if (!found) return null;
+
+  const week1Score = normalizeScore(found.week1Score);
+  const week2Score = normalizeScore(found.week2Score);
+  const week3Score = normalizeScore(found.week3Score);
+  const week4Score = normalizeScore(found.week4Score);
+  const finalScore = normalizeScore(found.finalScore);
+  const totalScore = Number((week1Score + week2Score + week3Score + week4Score + finalScore).toFixed(2));
+
+  return {
+    id: found.id,
+    employeeId: found.employeeId,
+    leadId: found.leadId || '',
+    month: Number(found.month || 0),
+    year: Number(found.year || 0),
+    week1Comment: found.week1Comment || '',
+    week1Score: week1Score,
+    week2Comment: found.week2Comment || '',
+    week2Score: week2Score,
+    week3Comment: found.week3Comment || '',
+    week3Score: week3Score,
+    week4Comment: found.week4Comment || '',
+    week4Score: week4Score,
+    finalReviewerId: found.finalReviewerId || '',
+    finalComment: found.finalComment || '',
+    finalScore: finalScore,
+    totalScore: totalScore,
+    maxScore: 50,
+    createdAt: found.createdAt || '',
+    updatedAt: found.updatedAt || '',
+  };
+}
+
+function upsertPerformanceRecord(body) {
+  if (!body || !body.employeeId) throw new Error('employeeId is required');
+  const month = Number(body.month);
+  const year = Number(body.year);
+  if (!month || !year) throw new Error('month and year are required');
+
+  const sheet = getSheet(PERFORMANCE_SHEET);
+  const data = sheet.getDataRange().getValues();
+  const now = new Date().toISOString();
+  let savedRecord = null;
+
+  function getEmployeeRoleById(empId) {
+    if (!empId) return '';
+    const employees = getEmployees();
+    const found = employees.find(function(e) { return String(e.id) === String(empId); });
+    return String((found && found.role) || '').toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-');
+  }
+
+  const hasWeeklyInput =
+    body.week1Comment !== undefined || body.week1Score !== undefined ||
+    body.week2Comment !== undefined || body.week2Score !== undefined ||
+    body.week3Comment !== undefined || body.week3Score !== undefined ||
+    body.week4Comment !== undefined || body.week4Score !== undefined;
+
+  const hasFinalInput =
+    body.finalComment !== undefined || body.finalScore !== undefined;
+
+  if (hasWeeklyInput) {
+    const weeklyEditorId = body.leadId;
+    const weeklyRole = getEmployeeRoleById(weeklyEditorId);
+    if (weeklyRole !== 'lead' && weeklyRole !== 'manager') {
+      throw new Error('Only lead or manager can add weekly performance and score.');
+    }
+  }
+
+  if (hasFinalInput) {
+    const reviewerId = body.finalReviewerId;
+    const reviewerRole = getEmployeeRoleById(reviewerId);
+    if (reviewerRole !== 'hr' && reviewerRole !== 'higher-management') {
+      throw new Error('Only HR or Higher Management can add final performance review and score.');
+    }
+  }
+
+  for (let i = 1; i < data.length; i++) {
+    if (
+      String(data[i][1]) === String(body.employeeId) &&
+      Number(data[i][3] || 0) === month &&
+      Number(data[i][4] || 0) === year
+    ) {
+      const nextLeadId = body.leadId === undefined ? String(data[i][2] || '') : String(body.leadId || '');
+      const nextWeek1Comment = body.week1Comment === undefined ? String(data[i][5] || '') : String(body.week1Comment || '');
+      const nextWeek1Score = body.week1Score === undefined ? normalizeScore(data[i][6]) : normalizeScore(body.week1Score);
+      const nextWeek2Comment = body.week2Comment === undefined ? String(data[i][7] || '') : String(body.week2Comment || '');
+      const nextWeek2Score = body.week2Score === undefined ? normalizeScore(data[i][8]) : normalizeScore(body.week2Score);
+      const nextWeek3Comment = body.week3Comment === undefined ? String(data[i][9] || '') : String(body.week3Comment || '');
+      const nextWeek3Score = body.week3Score === undefined ? normalizeScore(data[i][10]) : normalizeScore(body.week3Score);
+      const nextWeek4Comment = body.week4Comment === undefined ? String(data[i][11] || '') : String(body.week4Comment || '');
+      const nextWeek4Score = body.week4Score === undefined ? normalizeScore(data[i][12]) : normalizeScore(body.week4Score);
+      const nextFinalReviewerId = body.finalReviewerId === undefined ? String(data[i][13] || '') : String(body.finalReviewerId || '');
+      const nextFinalComment = body.finalComment === undefined ? String(data[i][14] || '') : String(body.finalComment || '');
+      const nextFinalScore = body.finalScore === undefined ? normalizeScore(data[i][15]) : normalizeScore(body.finalScore);
+
+      sheet.getRange(i + 1, 3).setValue(nextLeadId);
+      sheet.getRange(i + 1, 6).setValue(nextWeek1Comment);
+      sheet.getRange(i + 1, 7).setValue(nextWeek1Score);
+      sheet.getRange(i + 1, 8).setValue(nextWeek2Comment);
+      sheet.getRange(i + 1, 9).setValue(nextWeek2Score);
+      sheet.getRange(i + 1, 10).setValue(nextWeek3Comment);
+      sheet.getRange(i + 1, 11).setValue(nextWeek3Score);
+      sheet.getRange(i + 1, 12).setValue(nextWeek4Comment);
+      sheet.getRange(i + 1, 13).setValue(nextWeek4Score);
+      sheet.getRange(i + 1, 14).setValue(nextFinalReviewerId);
+      sheet.getRange(i + 1, 15).setValue(nextFinalComment);
+      sheet.getRange(i + 1, 16).setValue(nextFinalScore);
+      sheet.getRange(i + 1, 18).setValue(now);
+      savedRecord = getPerformanceRecord(body.employeeId, month, year);
+      break;
+    }
+  }
+
+  if (!savedRecord) {
+    const id = generateId();
+    const week1Score = normalizeScore(body.week1Score);
+    const week2Score = normalizeScore(body.week2Score);
+    const week3Score = normalizeScore(body.week3Score);
+    const week4Score = normalizeScore(body.week4Score);
+    const finalScore = normalizeScore(body.finalScore);
+    sheet.appendRow([
+      id,
+      String(body.employeeId),
+      String(body.leadId || ''),
+      month,
+      year,
+      String(body.week1Comment || ''),
+      week1Score,
+      String(body.week2Comment || ''),
+      week2Score,
+      String(body.week3Comment || ''),
+      week3Score,
+      String(body.week4Comment || ''),
+      week4Score,
+      String(body.finalReviewerId || ''),
+      String(body.finalComment || ''),
+      finalScore,
+      now,
+      now,
+    ]);
+    savedRecord = getPerformanceRecord(body.employeeId, month, year);
+  }
+
+  if (!savedRecord) {
+    throw new Error('Unable to save performance record');
+  }
+
+  const attendanceSheet = getSheet(ATTENDANCE_SHEET);
+  const attendanceData = attendanceSheet.getDataRange().getValues();
+  for (let i = 1; i < attendanceData.length; i++) {
+    if (String(attendanceData[i][1]) !== String(body.employeeId)) continue;
+    const dateStr = String(attendanceData[i][2] || '');
+    if (!dateStr) continue;
+    const d = new Date(dateStr + 'T00:00:00Z');
+    if (d.getUTCFullYear() !== year || (d.getUTCMonth() + 1) !== month) continue;
+
+    attendanceSheet.getRange(i + 1, 11).setValue(String(savedRecord.week1Comment || ''));
+    attendanceSheet.getRange(i + 1, 12).setValue(String(savedRecord.week2Comment || ''));
+    attendanceSheet.getRange(i + 1, 13).setValue(String(savedRecord.week3Comment || ''));
+    attendanceSheet.getRange(i + 1, 14).setValue(String(savedRecord.week4Comment || ''));
+    attendanceSheet.getRange(i + 1, 16).setValue(now);
+  }
+
+  return savedRecord;
+}
+
+const SLIP_HEADERS = ['id', 'payrollId', 'employeeId', 'employeeName', 'salaryMonth', 'salaryYear', 'payDate', 'amount', 'basicPay', 'leaveDeduction', 'lateDeduction', 'totalDeductions', 'netPay', 'workingDays', 'paidLeave', 'unpaidLeave', 'lateComings', 'slipHtml', 'createdAt'];
+
+function getSalarySlipsForEmployee(employeeId) {
+  if (!employeeId) throw new Error('employeeId is required');
+  const sheet = getSheet(SALARY_SLIPS_SHEET);
+  const rows = sheetToObjects(sheet, SLIP_HEADERS);
+  return rows
+    .filter(r => String(r.employeeId) === String(employeeId))
+    .map(parseSalarySlip)
+    .sort(function(a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+}
+
+function getSalarySlipsByPayroll(payrollId) {
+  if (!payrollId) throw new Error('payrollId is required');
+  const sheet = getSheet(SALARY_SLIPS_SHEET);
+  const rows = sheetToObjects(sheet, SLIP_HEADERS);
+  return rows
+    .filter(r => String(r.payrollId) === String(payrollId))
+    .map(parseSalarySlip);
+}
+
+function parseSalarySlip(r) {
+  return {
+    id: r.id,
+    payrollId: r.payrollId,
+    employeeId: r.employeeId,
+    employeeName: r.employeeName,
+    salaryMonth: r.salaryMonth,
+    salaryYear: Number(r.salaryYear || 0),
+    payDate: r.payDate,
+    amount: Number(r.amount || 0),
+    basicPay: Number(r.basicPay || 0),
+    leaveDeduction: Number(r.leaveDeduction || 0),
+    lateDeduction: Number(r.lateDeduction || 0),
+    totalDeductions: Number(r.totalDeductions || 0),
+    netPay: Number(r.netPay || 0),
+    workingDays: Number(r.workingDays || 22),
+    paidLeave: Number(r.paidLeave || 1),
+    unpaidLeave: Number(r.unpaidLeave || 0),
+    lateComings: Number(r.lateComings || 0),
+    slipHtml: r.slipHtml || '',
+    createdAt: r.createdAt,
+  };
+}
+
+function addSalarySlipsForPayroll(payrollId) {
+  if (!payrollId) throw new Error('payrollId is required');
+
+  const payrolls = getPayrollRecords();
+  const payroll = payrolls.find(p => String(p.id) === String(payrollId));
+  if (!payroll) throw new Error('Payroll record not found: ' + payrollId);
+
+  const slipSheet = getSheet(SALARY_SLIPS_SHEET);
+  const existingRows = sheetToObjects(slipSheet, SLIP_HEADERS);
+  const createdAt = new Date().toISOString();
+  const slips = [];
+
+  for (let i = 0; i < payroll.lineItems.length; i++) {
+    const line = payroll.lineItems[i];
+    if (!line || !line.employeeId) continue;
+
+    const existing = existingRows.find(r => String(r.payrollId) === String(payrollId) && String(r.employeeId) === String(line.employeeId));
+    if (existing) {
+      slips.push(parseSalarySlip(existing));
+      continue;
+    }
+
+    const amount = Number(line.amount || 0);
+    const unpaidLeave = 0;
+    const lateComings = 0;
+    const leaveDeduction = 0;
+    const lateDeduction = 0;
+    const totalDeductions = leaveDeduction + lateDeduction;
+    const netPay = amount;
+    const slipHtml = buildSalarySlipHtml({
+      payDate: payroll.payrollDate,
+      employeeName: line.employeeName,
+      employeeId: line.employeeId,
+      salaryMonth: payroll.salaryMonth,
+      salaryYear: payroll.salaryYear,
+      workingDays: 22,
+      paidLeave: 1,
+      unpaidLeave: unpaidLeave,
+      lateComings: lateComings,
+      basicPay: amount,
+      leaveDeduction: leaveDeduction,
+      lateDeduction: lateDeduction,
+      totalDeductions: totalDeductions,
+      netPay: netPay,
+    });
+
+    const newId = generateId();
+    const row = [
+      newId,
+      payrollId,
+      String(line.employeeId),
+      String(line.employeeName || ''),
+      String(payroll.salaryMonth || ''),
+      Number(payroll.salaryYear || 0),
+      String(payroll.payrollDate || ''),
+      amount,
+      amount,
+      leaveDeduction,
+      lateDeduction,
+      totalDeductions,
+      netPay,
+      22,
+      1,
+      unpaidLeave,
+      lateComings,
+      slipHtml,
+      createdAt,
+    ];
+
+    slipSheet.appendRow(row);
+    slips.push(parseSalarySlip({
+      id: newId,
+      payrollId: payrollId,
+      employeeId: String(line.employeeId),
+      employeeName: String(line.employeeName || ''),
+      salaryMonth: String(payroll.salaryMonth || ''),
+      salaryYear: Number(payroll.salaryYear || 0),
+      payDate: String(payroll.payrollDate || ''),
+      amount: amount,
+      basicPay: amount,
+      leaveDeduction: leaveDeduction,
+      lateDeduction: lateDeduction,
+      totalDeductions: totalDeductions,
+      netPay: netPay,
+      workingDays: 22,
+      paidLeave: 1,
+      unpaidLeave: unpaidLeave,
+      lateComings: lateComings,
+      slipHtml: slipHtml,
+      createdAt: createdAt,
+    }));
+  }
+
+  return slips;
+}
+
+function buildSalarySlipHtml(slip) {
+  return '<!doctype html><html><head><meta charset="utf-8" /><title>Payslip</title></head><body>' +
+    '<h1>Payslip</h1>' +
+    '<p>Employee: ' + String(slip.employeeName || '') + '</p>' +
+    '<p>Employee ID: ' + String(slip.employeeId || '') + '</p>' +
+    '<p>Pay Date: ' + String(slip.payDate || '') + '</p>' +
+    '<p>Salary Month: ' + String(slip.salaryMonth || '') + ' ' + String(slip.salaryYear || '') + '</p>' +
+    '<p>Net Pay: ' + String(slip.netPay || 0) + '</p>' +
+    '</body></html>';
 }

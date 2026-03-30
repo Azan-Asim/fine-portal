@@ -1,12 +1,15 @@
 // TypeScript types for Devsinn Team Management Portal
 
-export type UserRole = 'admin' | 'employee';
+export type UserRole = 'employee' | 'lead' | 'manager' | 'hr' | 'higher-management';
+export type Department = 'web' | 'app' | 'backend' | 'overall' | '';
 
 export interface AuthUser {
     id: string;
     name: string;
     email: string;
     role: UserRole;
+    department?: Department;
+    leadId?: string;
 }
 
 export interface Employee {
@@ -21,6 +24,9 @@ export interface Employee {
     bankAccountNumber: string;
     address: string;
     jobPosition: string;
+    role: UserRole;
+    department: Department;
+    leadId: string;
     status: string;
     joiningDate: string;
     contactNumber: string;
@@ -129,7 +135,56 @@ export interface PayrollDraft {
 export interface PayrollRecord extends PayrollDraft {
     id: string;
     total: number;
+    payrollPdfHtml: string;
+    chequeProofUrl: string;
+    salaryReceived: boolean;
+    salaryReceivedAt: string;
     createdAt: string;
+}
+
+export interface SalarySlip {
+    id: string;
+    payrollId: string;
+    employeeId: string;
+    employeeName: string;
+    salaryMonth: string;
+    salaryYear: number;
+    payDate: string;
+    amount: number;
+    basicPay: number;
+    leaveDeduction: number;
+    lateDeduction: number;
+    totalDeductions: number;
+    netPay: number;
+    workingDays: number;
+    paidLeave: number;
+    unpaidLeave: number;
+    lateComings: number;
+    slipHtml: string;
+    createdAt: string;
+}
+
+export interface PerformanceRecord {
+    id: string;
+    employeeId: string;
+    leadId: string;
+    month: number;
+    year: number;
+    week1Comment: string;
+    week1Score: number;
+    week2Comment: string;
+    week2Score: number;
+    week3Comment: string;
+    week3Score: number;
+    week4Comment: string;
+    week4Score: number;
+    finalReviewerId: string;
+    finalComment: string;
+    finalScore: number;
+    totalScore: number;
+    maxScore: number;
+    createdAt: string;
+    updatedAt: string;
 }
 
 export type AttendanceDayType = 'Working Day' | 'Holiday';
@@ -156,6 +211,11 @@ export interface AttendanceRecord {
     workingHours: number;
     workSessions: WorkSession[];
     breakSessions: BreakSession[];
+    performanceRecordId?: string;
+    week1Comment?: string;
+    week2Comment?: string;
+    week3Comment?: string;
+    week4Comment?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -170,5 +230,8 @@ export interface EmployeeMonthlyAttendanceSummary {
     totalHolidays: number;
     totalPresents: number;
     totalAbsents: number;
+    totalPerformanceScore: number;
+    maxPerformanceScore: number;
+    performance: PerformanceRecord | null;
     records: AttendanceRecord[];
 }
