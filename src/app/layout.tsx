@@ -18,19 +18,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body suppressHydrationWarning className={`${geist.className} bg-[#0D1117] text-white antialiased`}>
+      <body suppressHydrationWarning className={`${geist.className} antialiased`}>
         <AuthProvider>
           {children}
           <Toaster
             position="top-right"
             toastOptions={{
               style: {
-                background: "#1C2128",
-                color: "#E6EDF3",
-                border: "1px solid #30363D",
+                background: "#ffffff",
+                color: "#14314d",
+                border: "1px solid #d3e4f5",
               },
-              success: { iconTheme: { primary: "#3BF5C4", secondary: "#0D1117" } },
-              error: { iconTheme: { primary: "#F85149", secondary: "#0D1117" } },
+              success: { iconTheme: { primary: "#21c9d3", secondary: "#ffffff" } },
+              error: { iconTheme: { primary: "#F85149", secondary: "#ffffff" } },
             }}
           />
         </AuthProvider>

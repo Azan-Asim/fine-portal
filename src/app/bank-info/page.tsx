@@ -29,32 +29,32 @@ function BankInfoContent() {
                 <div className="w-full max-w-lg space-y-6">
                     {/* Card */}
                     <div className="rounded-2xl overflow-hidden"
-                        style={{ background: 'linear-gradient(135deg, #0D2D1F 0%, #0A3828 50%, #0D2D1F 100%)', border: '1px solid rgba(59,245,196,0.3)' }}>
+                        style={{ background: 'linear-gradient(145deg, rgba(91,116,222,0.12) 0%, rgba(33,201,211,0.12) 55%, rgba(69,211,156,0.12) 100%)', border: '1px solid rgba(91,116,222,0.28)' }}>
                         <div className="p-6">
                             <div className="flex items-center gap-3 mb-8">
                                 <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-                                    style={{ background: 'rgba(59,245,196,0.15)' }}>
-                                    <Building2 size={24} style={{ color: 'var(--accent)' }} />
+                                    style={{ background: 'rgba(91,116,222,0.14)' }}>
+                                    <Building2 size={24} style={{ color: 'var(--brand-blue)' }} />
                                 </div>
                                 <div>
-                                    <p className="font-bold text-lg" style={{ color: 'var(--accent)' }}>JazzCash Payment</p>
-                                    <p className="text-sm" style={{ color: 'rgba(59,245,196,0.6)' }}>Official penalty payment account</p>
+                                    <p className="font-bold text-lg" style={{ color: 'var(--brand-blue)' }}>JazzCash Payment</p>
+                                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Official penalty payment account</p>
                                 </div>
                             </div>
 
                             <div className="space-y-4">
                                 {bankDetails.map(({ label, value }) => (
                                     <div key={label} className="flex items-center justify-between p-4 rounded-xl"
-                                        style={{ background: 'rgba(0,0,0,0.3)' }}>
+                                        style={{ background: 'rgba(255,255,255,0.86)', border: '1px solid rgba(91,116,222,0.16)' }}>
                                         <div>
-                                            <p className="text-xs font-medium mb-1" style={{ color: 'rgba(59,245,196,0.6)' }}>{label}</p>
+                                            <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>{label}</p>
                                             <p className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>{value}</p>
                                         </div>
                                         <button onClick={() => copy(value)}
                                             className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
-                                            style={{ background: 'rgba(59,245,196,0.1)' }}
+                                            style={{ background: 'rgba(33,201,211,0.12)' }}
                                             title="Copy">
-                                            <Copy size={16} style={{ color: 'var(--accent)' }} />
+                                            <Copy size={16} style={{ color: 'var(--brand-blue)' }} />
                                         </button>
                                     </div>
                                 ))}
@@ -62,10 +62,10 @@ function BankInfoContent() {
                         </div>
 
                         {/* Bottom strip */}
-                        <div className="px-6 py-4" style={{ background: 'rgba(59,245,196,0.08)', borderTop: '1px solid rgba(59,245,196,0.15)' }}>
+                        <div className="px-6 py-4" style={{ background: 'rgba(255,255,255,0.72)', borderTop: '1px solid rgba(91,116,222,0.2)' }}>
                             <div className="flex items-center gap-2">
-                                <CreditCard size={16} style={{ color: 'var(--accent)' }} />
-                                <p className="text-sm" style={{ color: 'rgba(59,245,196,0.7)' }}>
+                                <CreditCard size={16} style={{ color: 'var(--brand-blue)' }} />
+                                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                                     After payment, submit your screenshot in the portal for verification.
                                 </p>
                             </div>

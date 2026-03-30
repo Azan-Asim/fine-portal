@@ -114,14 +114,14 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center p-4"
-            style={{ background: 'linear-gradient(135deg, #0D1117 0%, #161B22 50%, #0D1117 100%)' }}>
+            style={{ background: 'radial-gradient(circle at 20% 10%, rgba(91,116,222,0.12) 0%, transparent 45%), radial-gradient(circle at 85% 85%, rgba(69,211,156,0.12) 0%, transparent 45%), #ffffff' }}>
 
             {/* Background glow */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div style={{
                     position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)',
                     width: 600, height: 600,
-                    background: 'radial-gradient(circle, rgba(59,245,196,0.05) 0%, transparent 70%)',
+                    background: 'radial-gradient(circle, rgba(33,201,211,0.10) 0%, transparent 70%)',
                     borderRadius: '50%',
                 }} />
             </div>
@@ -130,8 +130,8 @@ export default function LoginPage() {
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4"
-                        style={{ background: 'var(--accent-dim)', border: '1px solid rgba(59,245,196,0.3)' }}>
-                        <ShieldCheck size={32} style={{ color: 'var(--accent)' }} />
+                        style={{ background: 'linear-gradient(135deg, rgba(91,116,222,0.15) 0%, rgba(33,201,211,0.15) 65%, rgba(69,211,156,0.15) 100%)', border: '1px solid rgba(91,116,222,0.24)' }}>
+                        <ShieldCheck size={32} style={{ color: 'var(--brand-blue)' }} />
                     </div>
                     <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Devsinn Team Management Portal</h1>
                     <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Role Based Access Portal</p>
@@ -167,7 +167,7 @@ export default function LoginPage() {
                     </div>
 
                     {!googleClientId && (
-                        <p className="mt-3 text-xs text-center" style={{ color: '#F0883E' }}>
+                        <p className="mt-3 text-xs text-center" style={{ color: 'var(--warning)' }}>
                             Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in .env.local to enable OAuth login.
                         </p>
                     )}

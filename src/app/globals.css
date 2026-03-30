@@ -1,18 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --bg-primary: #0D1117;
-  --bg-secondary: #161B22;
-  --bg-card: #1C2128;
-  --bg-hover: #21262D;
-  --border: #30363D;
-  --text-primary: #E6EDF3;
-  --text-secondary: #8B949E;
-  --accent: #3BF5C4;
-  --accent-dim: rgba(59, 245, 196, 0.12);
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f9ff;
+  --bg-card: #ffffff;
+  --bg-hover: #eaf4ff;
+  --border: #d3e4f5;
+  --text-primary: #14314d;
+  --text-secondary: #5d7892;
+  --accent: #21c9d3;
+  --accent-dim: rgba(33, 201, 211, 0.14);
+  --brand-blue: #5b74de;
+  --brand-cyan: #21c9d3;
+  --brand-green: #45d39c;
   --danger: #F85149;
   --warning: #F0883E;
-  --info: #58A6FF;
+  --info: #3d8ef7;
   --success: #3FB950;
 }
 
@@ -51,11 +54,12 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(42, 110, 171, 0.08);
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: var(--bg-primary);
+  background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-cyan) 65%, var(--brand-green) 100%);
+  color: #ffffff;
   font-weight: 600;
   padding: 0.6rem 1.25rem;
   border-radius: 8px;
@@ -69,8 +73,9 @@ body {
 }
 
 .btn-primary:hover {
-  opacity: 0.88;
+  opacity: 0.96;
   transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(33, 201, 211, 0.3);
 }
 
 .btn-primary:active {
@@ -99,7 +104,7 @@ body {
 }
 
 .btn-secondary:hover {
-  background: var(--border);
+  background: #deecfb;
 }
 
 .btn-danger {
@@ -123,7 +128,7 @@ body {
 
 .input {
   width: 100%;
-  background: var(--bg-secondary);
+  background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.65rem 1rem;
@@ -134,7 +139,8 @@ body {
 }
 
 .input:focus {
-  border-color: var(--accent);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(91, 116, 222, 0.16);
 }
 
 .input::placeholder {
@@ -151,7 +157,7 @@ body {
 
 .select {
   width: 100%;
-  background: var(--bg-secondary);
+  background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.65rem 1rem;
@@ -163,7 +169,8 @@ body {
 }
 
 .select:focus {
-  border-color: var(--accent);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(91, 116, 222, 0.16);
 }
 
 .select option {
@@ -221,8 +228,8 @@ body {
 }
 
 .sidebar-link.active {
-  background: var(--accent-dim);
-  color: var(--accent);
+  background: linear-gradient(135deg, rgba(91, 116, 222, 0.14) 0%, rgba(33, 201, 211, 0.14) 100%);
+  color: var(--brand-blue);
 }
 
 /* Table */
@@ -236,7 +243,7 @@ table {
 }
 
 thead th {
-  background: var(--bg-secondary);
+  background: #eef6ff;
   padding: 0.75rem 1rem;
   text-align: left;
   font-size: 0.75rem;
@@ -270,7 +277,7 @@ tbody td {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(11, 43, 70, 0.45);
   backdrop-filter: blur(4px);
   z-index: 50;
   display: flex;
@@ -301,7 +308,7 @@ tbody td {
 }
 
 .stat-card:hover {
-  border-color: var(--accent);
+  border-color: var(--brand-cyan);
   transform: translateY(-2px);
 }
 
@@ -310,7 +317,7 @@ tbody td {
   width: 20px;
   height: 20px;
   border: 2px solid var(--border);
-  border-top-color: var(--accent);
+  border-top-color: var(--brand-blue);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -362,7 +369,7 @@ tbody td {
 
 .react-datepicker__day--selected {
   background: var(--accent) !important;
-  color: var(--bg-primary) !important;
+  color: #ffffff !important;
   border-radius: 6px !important;
 }
 

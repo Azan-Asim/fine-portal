@@ -114,19 +114,19 @@ export default function ImageUploader({ value, onChange, label, required }: Imag
                     <div className="absolute top-2 right-2 flex gap-2">
                         {value && !uploading && (
                             <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
-                                style={{ background: 'rgba(63,185,80,0.9)', color: '#fff' }}>
+                                style={{ background: 'rgba(69,211,156,0.2)', color: '#0f6f52', border: '1px solid rgba(69,211,156,0.4)' }}>
                                 <CheckCircle size={12} /> Uploaded
                             </div>
                         )}
                         {uploading && (
                             <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
-                                style={{ background: 'rgba(59,245,196,0.9)', color: '#0D1117' }}>
+                                style={{ background: 'rgba(33,201,211,0.2)', color: '#15546a', border: '1px solid rgba(33,201,211,0.38)' }}>
                                 <Loader2 size={12} className="animate-spin" /> Uploading…
                             </div>
                         )}
                         <button onClick={handleClear} type="button"
                             className="w-7 h-7 rounded-full flex items-center justify-center"
-                            style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+                            style={{ background: 'rgba(20,49,77,0.82)', color: '#fff' }}>
                             <X size={14} />
                         </button>
                     </div>
