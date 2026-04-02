@@ -2,9 +2,15 @@
 
 import { useState } from 'react';
 import { CompanyExpense, PaymentMethod } from '@/types';
-import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Employee } from '@/types';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 
 interface CompanyExpenseFormProps {
     onSubmit: (expense: Omit<CompanyExpense, 'id' | 'createdAt'>) => Promise<void>;
@@ -64,21 +70,22 @@ export default function CompanyExpenseForm({ onSubmit, onClose, approvers }: Com
             toast.success('Expense added successfully');
             onClose();
         } catch (error) {
-            toast.error('Failed to add expense');
+            const message = error instanceof Error ? error.message : 'Failed to add expense';
+            toast.error(message);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-            <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-lg my-8">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-gray-900">Add Company Expense</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-                        <X size={20} />
-                    </button>
-                </div>
+        <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+            <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto" showCloseButton={false}>
+                <DialogHeader>
+                    <DialogTitle>Add Company Expense</DialogTitle>
+                    <DialogDescription>
+                        Add a new company expense entry.
+                    </DialogDescription>
+                </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
@@ -145,22 +152,23 @@ export default function CompanyExpenseForm({ onSubmit, onClose, approvers }: Com
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                 Approved By <span className="text-red-500">*</span>
                             </label>
-                            <select
+                            <input
+                                list="company-expense-approvers"
+                                type="text"
                                 name="approvedBy"
                                 value={formData.approvedBy}
                                 onChange={handleChange}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Approver name"
                                 required
-                            >
-                                <option value="">Select approver</option>
+                            />
+                            <datalist id="company-expense-approvers">
                                 {approvers.map((emp) => (
-                                    <option key={emp.id} value={emp.name}>
-                                        {emp.name} ({emp.jobPosition || 'No Designation'})
-                                    </option>
+                                    <option key={emp.id} value={emp.name} />
                                 ))}
-                            </select>
+                            </datalist>
                             {approvers.length === 0 && (
-                                <p className="text-xs text-amber-600 mt-1">No authorized approvers configured yet.</p>
+                                <p className="text-xs text-amber-600 mt-1">No approvers selected above. You can type approver name manually.</p>
                             )}
                         </div>
                     </div>
@@ -227,7 +235,7 @@ export default function CompanyExpenseForm({ onSubmit, onClose, approvers }: Com
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 }

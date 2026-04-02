@@ -2,7 +2,7 @@
  * Devsinn Team Management Portal - Google Apps Script
  * Deploy as a Web App (Execute as: Me, Access: Anyone)
  * 
- * Sheet names: "Employees", "Penalties", "Penalty Expenses", "Company Expenses", "Company Income", "Payroll Letters", "Attendance", "Performance Records", "Salary Slips"
+ * Sheet names: "Employees", "Penalties", "Penalty Expenses", "Company Expenses", "Company Income", "Payroll Letters", "Attendance", "Performance Records", "Salary Slips", "Projects"
  * Requests support GET (?action=xxx&payload=JSON) and POST JSON body ({ action, payload })
  */
 
@@ -16,6 +16,9 @@ const PAYROLL_SHEET = 'Payroll Letters';
 const ATTENDANCE_SHEET = 'Attendance';
 const PERFORMANCE_SHEET = 'Performance Records';
 const SALARY_SLIPS_SHEET = 'Salary Slips';
+const PROJECTS_SHEET = 'Projects';
+const RULES_SHEET = 'Rules';
+const PROJECT_FOLDER_PROPERTY_KEY = 'PROJECT_DOCS_ROOT_FOLDER_ID';
 
 function respond(data) {
   return ContentService
@@ -70,11 +73,26 @@ function doGet(e) {
 
     // Attendance
     if (action === 'getAttendanceByDate') return respond(getAttendanceByDate(payload.date));
+    if (action === 'getAttendanceRecords') return respond(getAttendanceRecords());
     if (action === 'upsertAttendanceRecord') return respond(upsertAttendanceRecord(payload));
     if (action === 'setHolidayForDate') return respond(setHolidayForDate(payload.date));
     if (action === 'getEmployeeMonthlyAttendance') return respond(getEmployeeMonthlyAttendance(payload.employeeId, payload.month, payload.year));
     if (action === 'upsertPerformanceRecord') return respond(upsertPerformanceRecord(payload));
     if (action === 'getPerformanceRecord') return respond(getPerformanceRecord(payload.employeeId, payload.month, payload.year));
+    if (action === 'getPerformanceRecords') return respond(getPerformanceRecords());
+
+    // Project Documents
+    if (action === 'getProjects') return respond(getProjects());
+    if (action === 'getProjectDocumentCounts') return respond(getProjectDocumentCounts());
+    if (action === 'getProjectDocuments') return respond(getProjectDocuments(payload.projectId));
+    if (action === 'uploadProjectDocument') return respond(uploadProjectDocument(payload));
+    if (action === 'updateProjectDocumentAccess') return respond(updateProjectDocumentAccess(payload));
+
+    // Rules
+    if (action === 'getRules') return respond(getRules());
+    if (action === 'addRule') return respond(addRule(payload));
+    if (action === 'updateRule') return respond(updateRule(payload.id, payload.updates));
+    if (action === 'deleteRule') return respond(deleteRule(payload.id));
 
     return respondError('Unknown action: ' + action);
   } catch (err) {
@@ -118,6 +136,10 @@ function getSheet(name) {
       sheet.appendRow(['ID', 'Employee ID', 'Lead ID', 'Month', 'Year', 'Week1 Comment', 'Week1 Score', 'Week2 Comment', 'Week2 Score', 'Week3 Comment', 'Week3 Score', 'Week4 Comment', 'Week4 Score', 'Final Reviewer ID', 'Final Comment', 'Final Score', 'Created At', 'Updated At']);
     } else if (name === SALARY_SLIPS_SHEET) {
       sheet.appendRow(['ID', 'Payroll ID', 'Employee ID', 'Employee Name', 'Salary Month', 'Salary Year', 'Pay Date', 'Amount', 'Basic Pay', 'Leave Deduction', 'Late Deduction', 'Total Deductions', 'Net Pay', 'Working Days', 'Paid Leave', 'Unpaid Leave', 'Late Comings', 'Slip HTML', 'Created At']);
+    } else if (name === PROJECTS_SHEET) {
+      sheet.appendRow(['Project ID', 'Project Name', 'Description', 'Allowed Departments', 'Sheet Name', 'Sheet Link', 'Drive Folder ID', 'Created At']);
+    } else if (name === RULES_SHEET) {
+      sheet.appendRow(['ID', 'Target Role', 'Title', 'Content', 'Active', 'Sort Order', 'Created By', 'Created By Name', 'Updated By', 'Updated By Name', 'Created At', 'Updated At']);
     }
   }
 
@@ -132,6 +154,12 @@ function getSheet(name) {
   }
   if (name === PERFORMANCE_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 18) {
     sheet.getRange(1, 1, 1, 18).setValues([['ID', 'Employee ID', 'Lead ID', 'Month', 'Year', 'Week1 Comment', 'Week1 Score', 'Week2 Comment', 'Week2 Score', 'Week3 Comment', 'Week3 Score', 'Week4 Comment', 'Week4 Score', 'Final Reviewer ID', 'Final Comment', 'Final Score', 'Created At', 'Updated At']]);
+  }
+  if (name === PROJECTS_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 8) {
+    sheet.getRange(1, 1, 1, 8).setValues([['Project ID', 'Project Name', 'Description', 'Allowed Departments', 'Sheet Name', 'Sheet Link', 'Drive Folder ID', 'Created At']]);
+  }
+  if (name === RULES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 12) {
+    sheet.getRange(1, 1, 1, 12).setValues([['ID', 'Target Role', 'Title', 'Content', 'Active', 'Sort Order', 'Created By', 'Created By Name', 'Updated By', 'Updated By Name', 'Created At', 'Updated At']]);
   }
 
   return sheet;
@@ -299,22 +327,143 @@ function deletePenaltyExpense(id) {
 // ============ COMPANY EXPENSES ============
 
 const CE_HEADERS = ['id', 'date', 'description', 'amount', 'paidBy', 'approvedBy', 'paymentMethod', 'receiptUrl', 'notes', 'createdAt'];
+const COMPANY_EXPENSE_MONTH_REGEX = /^(Jan|January|Feb|February|Mar|March|Apr|April|May|Jun|June|Jul|July|Aug|August|Sep|Sept|September|Oct|October|Nov|November|Dec|December),\s*\d{4}$/i;
+
+function isCompanyExpenseMonthSheet(sheetName) {
+  return COMPANY_EXPENSE_MONTH_REGEX.test(String(sheetName || '').trim());
+}
+
+function getCompanyExpenseHeaderRow(sheet) {
+  const scanRows = Math.min(sheet.getLastRow(), 12);
+  const scanCols = Math.max(Math.min(sheet.getLastColumn(), 8), 6);
+  if (scanRows <= 0) return 1;
+
+  const values = sheet.getRange(1, 1, scanRows, scanCols).getValues();
+  for (let r = 0; r < values.length; r++) {
+    const normalized = values[r].map(function(cell) {
+      return String(cell || '').trim().toUpperCase();
+    });
+    if (
+      normalized.indexOf('DATE') > -1 &&
+      normalized.indexOf('DESCRIPTION') > -1 &&
+      normalized.indexOf('AMOUNT') > -1 &&
+      normalized.indexOf('PAID BY') > -1
+    ) {
+      return r + 1;
+    }
+  }
+
+  return 1;
+}
+
+function normalizeSheetDateValue(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return String(value || '');
+}
+
+function formatMonthSheetNameFromDate(dateText) {
+  const date = new Date(String(dateText || ''));
+  if (isNaN(date.getTime())) {
+    throw new Error('Invalid company expense date');
+  }
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'MMMM, yyyy');
+}
+
+function parseMonthlyCompanyExpenseRow(sheetName, rowNumber, row) {
+  const rowId = String(row[10] || '').trim() || (sheetName + '__' + rowNumber);
+  return {
+    id: rowId,
+    date: normalizeSheetDateValue(row[1]),
+    description: String(row[2] || ''),
+    amount: Number(row[4] || 0),
+    paidBy: String(row[5] || ''),
+    approvedBy: String(row[6] || ''),
+    paymentMethod: String(row[7] || ''),
+    receiptUrl: String(row[8] || ''),
+    notes: String(row[9] || ''),
+    createdAt: String(row[11] || ''),
+  };
+}
+
+function getMonthlyCompanyExpenses() {
+  const expenses = [];
+  const sheets = SS.getSheets().filter(function(sheet) {
+    return isCompanyExpenseMonthSheet(sheet.getName());
+  });
+
+  sheets.forEach(function(sheet) {
+    const headerRow = getCompanyExpenseHeaderRow(sheet);
+    const firstDataRow = headerRow + 1;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < firstDataRow) return;
+
+    const values = sheet.getRange(firstDataRow, 1, lastRow - firstDataRow + 1, Math.max(sheet.getLastColumn(), 12)).getValues();
+    values.forEach(function(row, index) {
+      const hasAnyValue = row.some(function(cell) {
+        return String(cell || '').trim() !== '';
+      });
+      if (!hasAnyValue) return;
+
+      const amount = Number(row[4] || 0);
+      const description = String(row[2] || '').trim();
+      const paidBy = String(row[5] || '').trim();
+      if (!description && !paidBy && amount === 0) return;
+
+      const rowNumber = firstDataRow + index;
+      expenses.push(parseMonthlyCompanyExpenseRow(sheet.getName(), rowNumber, row));
+    });
+  });
+
+  return expenses;
+}
 
 function getCompanyExpenses() {
-  const sheet = getSheet(COMPANY_EXPENSES_SHEET);
-  const rows = sheetToObjects(sheet, CE_HEADERS);
-  return rows.map(r => ({ ...r, amount: Number(r.amount) }));
+  const monthly = getMonthlyCompanyExpenses();
+
+  // Keep legacy sheet compatibility if old records exist there.
+  const legacySheet = getSheet(COMPANY_EXPENSES_SHEET);
+  const legacyRows = sheetToObjects(legacySheet, CE_HEADERS).map(function(r) {
+    return { ...r, amount: Number(r.amount) };
+  });
+
+  return monthly.concat(legacyRows).sort(function(a, b) {
+    const dateSort = String(b.date || '').localeCompare(String(a.date || ''));
+    if (dateSort !== 0) return dateSort;
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
 }
 
 function addCompanyExpense(body) {
-  const sheet = getSheet(COMPANY_EXPENSES_SHEET);
+  const targetSheetName = formatMonthSheetNameFromDate(body.date);
+  let sheet = SS.getSheetByName(targetSheetName);
+  if (!sheet) {
+    sheet = SS.insertSheet(targetSheetName);
+    sheet.appendRow(['SR NO', 'DATE', 'DESCRIPTION', 'REF NO', 'AMOUNT', 'PAID BY', 'APPROVED BY', 'PAYMENT METHOD', 'RECEIPT URL', 'NOTES', 'ID', 'CREATED AT']);
+  }
+
+  const headerRow = getCompanyExpenseHeaderRow(sheet);
+  const firstDataRow = headerRow + 1;
+  const nextRow = Math.max(sheet.getLastRow() + 1, firstDataRow);
+  const serialNo = Math.max(1, nextRow - headerRow);
   const id = generateId();
   const createdAt = new Date().toISOString();
   const row = [
-    id, body.date, body.description, body.amount, body.paidBy, body.approvedBy,
-    body.paymentMethod || '', body.receiptUrl || '', body.notes || '', createdAt
+    serialNo,
+    body.date,
+    body.description,
+    body.referenceNo || '',
+    body.amount,
+    body.paidBy,
+    body.approvedBy,
+    body.paymentMethod || '',
+    body.receiptUrl || '',
+    body.notes || '',
+    id,
+    createdAt,
   ];
-  sheet.appendRow(row);
+  sheet.getRange(nextRow, 1, 1, row.length).setValues([row]);
   return { 
     id, date: body.date, description: body.description, amount: Number(body.amount),
     paidBy: body.paidBy, approvedBy: body.approvedBy, 
@@ -324,11 +473,42 @@ function addCompanyExpense(body) {
 }
 
 function deleteCompanyExpense(id) {
-  const sheet = getSheet(COMPANY_EXPENSES_SHEET);
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === id) { sheet.deleteRow(i + 1); break; }
+  if (!id) throw new Error('id is required');
+
+  // Delete from monthly sheets (ID column or composite ID fallback).
+  const monthlySheets = SS.getSheets().filter(function(sheet) {
+    return isCompanyExpenseMonthSheet(sheet.getName());
+  });
+  for (let s = 0; s < monthlySheets.length; s++) {
+    const sheet = monthlySheets[s];
+    const headerRow = getCompanyExpenseHeaderRow(sheet);
+    const firstDataRow = headerRow + 1;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < firstDataRow) continue;
+
+    const values = sheet.getRange(firstDataRow, 1, lastRow - firstDataRow + 1, Math.max(sheet.getLastColumn(), 12)).getValues();
+    for (let i = 0; i < values.length; i++) {
+      const rowNumber = firstDataRow + i;
+      const row = values[i];
+      const rowId = String(row[10] || '').trim() || (sheet.getName() + '__' + rowNumber);
+      if (rowId === String(id)) {
+        sheet.deleteRow(rowNumber);
+        return null;
+      }
+    }
   }
+
+  // Legacy fallback.
+  const legacySheet = getSheet(COMPANY_EXPENSES_SHEET);
+  const data = legacySheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(id)) {
+      legacySheet.deleteRow(i + 1);
+      return null;
+    }
+  }
+
+  throw new Error('Company expense not found: ' + id);
   return null;
 }
 
@@ -614,6 +794,12 @@ function getAttendanceByDate(date) {
     .map(parseAttendanceObject);
 }
 
+function getAttendanceRecords() {
+  const sheet = getSheet(ATTENDANCE_SHEET);
+  const rows = sheetToObjects(sheet, A_HEADERS);
+  return rows.map(parseAttendanceObject);
+}
+
 function upsertAttendanceRecord(body) {
   if (!body || !body.employeeId || !body.date) {
     throw new Error('employeeId and date are required');
@@ -839,6 +1025,43 @@ function getPerformanceRecord(employeeId, month, year) {
     createdAt: found.createdAt || '',
     updatedAt: found.updatedAt || '',
   };
+}
+
+function getPerformanceRecords() {
+  const sheet = getSheet(PERFORMANCE_SHEET);
+  const rows = sheetToObjects(sheet, PERF_HEADERS);
+
+  return rows.map(function(found) {
+    const week1Score = normalizeScore(found.week1Score);
+    const week2Score = normalizeScore(found.week2Score);
+    const week3Score = normalizeScore(found.week3Score);
+    const week4Score = normalizeScore(found.week4Score);
+    const finalScore = normalizeScore(found.finalScore);
+    const totalScore = Number((week1Score + week2Score + week3Score + week4Score + finalScore).toFixed(2));
+
+    return {
+      id: found.id,
+      employeeId: found.employeeId,
+      leadId: found.leadId || '',
+      month: Number(found.month || 0),
+      year: Number(found.year || 0),
+      week1Comment: found.week1Comment || '',
+      week1Score: week1Score,
+      week2Comment: found.week2Comment || '',
+      week2Score: week2Score,
+      week3Comment: found.week3Comment || '',
+      week3Score: week3Score,
+      week4Comment: found.week4Comment || '',
+      week4Score: week4Score,
+      finalReviewerId: found.finalReviewerId || '',
+      finalComment: found.finalComment || '',
+      finalScore: finalScore,
+      totalScore: totalScore,
+      maxScore: 50,
+      createdAt: found.createdAt || '',
+      updatedAt: found.updatedAt || '',
+    };
+  });
 }
 
 function upsertPerformanceRecord(body) {
@@ -1124,4 +1347,539 @@ function buildSalarySlipHtml(slip) {
     '<p>Salary Month: ' + String(slip.salaryMonth || '') + ' ' + String(slip.salaryYear || '') + '</p>' +
     '<p>Net Pay: ' + String(slip.netPay || 0) + '</p>' +
     '</body></html>';
+}
+
+// ============ PROJECT DOCUMENTS ============
+
+const DEFAULT_PROJECTS = [
+  {
+    id: 'portal-revamp',
+    name: 'Portal Revamp',
+    description: 'UI, UX, and platform modernization tasks for the internal portal.',
+    allowedDepartments: ['web', 'overall'],
+  },
+  {
+    id: 'mobile-app',
+    name: 'Mobile App',
+    description: 'Cross-platform mobile app feature development and release documents.',
+    allowedDepartments: ['app', 'overall'],
+  },
+  {
+    id: 'api-foundation',
+    name: 'API Foundation',
+    description: 'Backend architecture, API contracts, and integration documentation.',
+    allowedDepartments: ['backend', 'overall'],
+  },
+  {
+    id: 'company-wide',
+    name: 'Company Wide Operations',
+    description: 'Shared company-level docs, policy files, and cross-team standards.',
+    allowedDepartments: ['overall', 'web', 'app', 'backend'],
+  },
+];
+
+const PROJECT_DOC_HEADERS = ['ID', 'Title', 'Description', 'File Name', 'File Type', 'File Size', 'File URL', 'Uploaded By', 'Uploaded By Name', 'Uploaded At', 'Access List JSON', 'Drive File ID'];
+
+function sanitizeSheetName(name) {
+  const sanitized = String(name || '')
+    .replace(/[\\\/?*\[\]:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return sanitized.substring(0, 80) || 'Project';
+}
+
+function getProjectDocsRootFolder() {
+  const props = PropertiesService.getScriptProperties();
+  const existingId = props.getProperty(PROJECT_FOLDER_PROPERTY_KEY);
+  if (existingId) {
+    try {
+      return DriveApp.getFolderById(existingId);
+    } catch (err) {
+      props.deleteProperty(PROJECT_FOLDER_PROPERTY_KEY);
+    }
+  }
+
+  const folder = DriveApp.createFolder(SS.getName() + ' - Project Documents');
+  props.setProperty(PROJECT_FOLDER_PROPERTY_KEY, folder.getId());
+  return folder;
+}
+
+function getProjectIndexRows() {
+  const sheet = getSheet(PROJECTS_SHEET);
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+
+  return values.slice(1).map(function(row, index) {
+    return {
+      rowNumber: index + 2,
+      projectId: String(row[0] || ''),
+      name: String(row[1] || ''),
+      description: String(row[2] || ''),
+      allowedDepartments: String(row[3] || ''),
+      sheetName: String(row[4] || ''),
+      sheetLink: String(row[5] || ''),
+      folderId: String(row[6] || ''),
+      createdAt: String(row[7] || ''),
+    };
+  });
+}
+
+function ensureProjectSheet(projectId, projectName) {
+  const targetName = sanitizeSheetName('Project - ' + projectName + ' [' + projectId + ']');
+  let sheet = SS.getSheetByName(targetName);
+  if (!sheet) {
+    sheet = SS.insertSheet(targetName);
+    sheet.appendRow(PROJECT_DOC_HEADERS);
+  } else if (sheet.getLastRow() === 0) {
+    sheet.appendRow(PROJECT_DOC_HEADERS);
+  }
+  return sheet;
+}
+
+function ensureProjectFolder(projectId, projectName) {
+  const root = getProjectDocsRootFolder();
+  const name = sanitizeSheetName(projectName + ' - ' + projectId);
+  const folders = root.getFoldersByName(name);
+  if (folders.hasNext()) return folders.next();
+  return root.createFolder(name);
+}
+
+function getProjectSheetLink(sheet) {
+  return SS.getUrl() + '#gid=' + sheet.getSheetId();
+}
+
+function ensureProjectInIndex(project, options) {
+  var opts = options || {};
+  var shouldEnsureDriveFolder = !!opts.ensureDriveFolder;
+  const sheet = getSheet(PROJECTS_SHEET);
+  const rows = getProjectIndexRows();
+  const existing = rows.find(function(row) { return row.projectId === project.id; });
+  const nowIso = new Date().toISOString();
+
+  const projectSheet = ensureProjectSheet(project.id, project.name);
+  let projectFolderId = '';
+  if (existing && existing.folderId) {
+    projectFolderId = existing.folderId;
+  }
+  if (shouldEnsureDriveFolder && !projectFolderId) {
+    projectFolderId = ensureProjectFolder(project.id, project.name).getId();
+  }
+  const sheetLink = getProjectSheetLink(projectSheet);
+  const allowedDepartmentsText = (project.allowedDepartments || []).join(',');
+
+  if (existing) {
+    sheet.getRange(existing.rowNumber, 2).setValue(project.name);
+    sheet.getRange(existing.rowNumber, 3).setValue(project.description || '');
+    sheet.getRange(existing.rowNumber, 4).setValue(allowedDepartmentsText);
+    sheet.getRange(existing.rowNumber, 5).setValue(projectSheet.getName());
+    sheet.getRange(existing.rowNumber, 6).setValue(sheetLink);
+    if (shouldEnsureDriveFolder) {
+      sheet.getRange(existing.rowNumber, 7).setValue(projectFolderId);
+    }
+
+    return {
+      projectId: project.id,
+      name: project.name,
+      description: project.description || '',
+      allowedDepartments: project.allowedDepartments || [],
+      sheetName: projectSheet.getName(),
+      sheetLink: sheetLink,
+      folderId: projectFolderId,
+      createdAt: existing.createdAt || nowIso,
+    };
+  }
+
+  sheet.appendRow([
+    project.id,
+    project.name,
+    project.description || '',
+    allowedDepartmentsText,
+    projectSheet.getName(),
+    sheetLink,
+    projectFolderId,
+    nowIso,
+  ]);
+
+  return {
+    projectId: project.id,
+    name: project.name,
+    description: project.description || '',
+    allowedDepartments: project.allowedDepartments || [],
+    sheetName: projectSheet.getName(),
+    sheetLink: sheetLink,
+    folderId: projectFolderId,
+    createdAt: nowIso,
+  };
+}
+
+function bootstrapDefaultProjects() {
+  const existingRows = getProjectIndexRows();
+  const existingIds = existingRows.map(function(row) { return row.projectId; });
+
+  for (var i = 0; i < DEFAULT_PROJECTS.length; i++) {
+    const project = DEFAULT_PROJECTS[i];
+    if (existingIds.indexOf(project.id) === -1) {
+      ensureProjectInIndex(project, { ensureDriveFolder: false });
+    }
+  }
+}
+
+function ensureProjectDriveFolderAndUpdate(projectRow) {
+  if (projectRow && projectRow.folderId) {
+    try {
+      DriveApp.getFolderById(projectRow.folderId);
+      return projectRow.folderId;
+    } catch (err) {
+      // Continue and recreate folder when stored ID is invalid.
+    }
+  }
+
+  const project = {
+    id: projectRow.projectId,
+    name: projectRow.name,
+    description: projectRow.description,
+    allowedDepartments: String(projectRow.allowedDepartments || '')
+      .split(',')
+      .map(function(item) { return item.trim(); })
+      .filter(function(item) { return item; }),
+  };
+
+  const ensured = ensureProjectInIndex(project, { ensureDriveFolder: true });
+  return ensured.folderId;
+}
+
+function parseProjectItem(row) {
+  const allowedDepartments = String(row.allowedDepartments || '')
+    .split(',')
+    .map(function(item) { return item.trim(); })
+    .filter(function(item) { return item; });
+
+  return {
+    id: row.projectId,
+    name: row.name,
+    description: row.description,
+    allowedDepartments: allowedDepartments,
+    createdAt: row.createdAt,
+  };
+}
+
+function getProjects() {
+  bootstrapDefaultProjects();
+  return getProjectIndexRows()
+    .map(parseProjectItem)
+    .sort(function(a, b) { return String(a.name).localeCompare(String(b.name)); });
+}
+
+function getProjectDocumentCounts() {
+  bootstrapDefaultProjects();
+  const rows = getProjectIndexRows();
+  const counts = {};
+
+  rows.forEach(function(row) {
+    if (!row.projectId || !row.sheetName) return;
+    const sheet = SS.getSheetByName(row.sheetName);
+    if (!sheet) {
+      counts[row.projectId] = 0;
+      return;
+    }
+    counts[row.projectId] = Math.max(0, sheet.getLastRow() - 1);
+  });
+
+  return counts;
+}
+
+function findProjectRow(projectId) {
+  bootstrapDefaultProjects();
+  const rows = getProjectIndexRows();
+  return rows.find(function(row) { return row.projectId === String(projectId || ''); }) || null;
+}
+
+function parseDocumentRow(row) {
+  var accessList = [];
+  try {
+    accessList = row[10] ? JSON.parse(String(row[10])) : [];
+  } catch (err) {
+    accessList = [];
+  }
+
+  return {
+    id: String(row[0] || ''),
+    title: String(row[1] || ''),
+    description: String(row[2] || ''),
+    fileName: String(row[3] || ''),
+    fileType: String(row[4] || ''),
+    fileSize: Number(row[5] || 0),
+    fileUrl: String(row[6] || ''),
+    uploadedBy: String(row[7] || ''),
+    uploadedByName: String(row[8] || ''),
+    uploadedAt: String(row[9] || ''),
+    accessList: accessList,
+    driveFileId: String(row[11] || ''),
+  };
+}
+
+function getProjectDocuments(projectId) {
+  if (!projectId) throw new Error('projectId is required');
+  const projectRow = findProjectRow(projectId);
+  if (!projectRow) return [];
+
+  const sheet = SS.getSheetByName(projectRow.sheetName);
+  if (!sheet) return [];
+
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+
+  return values.slice(1).map(function(row) {
+    const document = parseDocumentRow(row);
+    document.projectId = String(projectId);
+    return document;
+  }).sort(function(a, b) {
+    return String(b.uploadedAt).localeCompare(String(a.uploadedAt));
+  });
+}
+
+function decodeDataUrl(content) {
+  if (!content) throw new Error('fileContent is required');
+  const raw = String(content);
+  const commaIndex = raw.indexOf(',');
+  if (raw.indexOf('data:') === 0 && commaIndex > -1) {
+    return raw.substring(commaIndex + 1);
+  }
+  return raw;
+}
+
+function uploadProjectDocument(payload) {
+  if (!payload || !payload.projectId) throw new Error('projectId is required');
+  if (!payload.fileName) throw new Error('fileName is required');
+  if (!payload.fileContent) throw new Error('fileContent is required');
+
+  const projectRow = findProjectRow(payload.projectId);
+  if (!projectRow) throw new Error('Project not found: ' + payload.projectId);
+
+  const projectSheet = SS.getSheetByName(projectRow.sheetName) || ensureProjectSheet(projectRow.projectId, projectRow.name);
+  const folderId = ensureProjectDriveFolderAndUpdate(projectRow);
+  const folder = DriveApp.getFolderById(folderId);
+  const base64 = decodeDataUrl(payload.fileContent);
+  const bytes = Utilities.base64Decode(base64);
+  const blob = Utilities.newBlob(bytes, payload.fileType || 'application/octet-stream', payload.fileName);
+  const driveFile = folder.createFile(blob);
+
+  const accessList = Array.isArray(payload.accessList) ? payload.accessList : [];
+  const nowIso = new Date().toISOString();
+  const documentId = generateId();
+
+  projectSheet.appendRow([
+    documentId,
+    String(payload.title || payload.fileName),
+    String(payload.description || ''),
+    String(payload.fileName || ''),
+    String(payload.fileType || 'application/octet-stream'),
+    Number(payload.fileSize || blob.getBytes().length || 0),
+    driveFile.getUrl(),
+    String(payload.uploadedBy || ''),
+    String(payload.uploadedByName || ''),
+    nowIso,
+    JSON.stringify(Array.from(new Set(accessList))),
+    driveFile.getId(),
+  ]);
+
+  return {
+    id: documentId,
+    projectId: String(projectRow.projectId),
+    title: String(payload.title || payload.fileName),
+    description: String(payload.description || ''),
+    fileName: String(payload.fileName || ''),
+    fileType: String(payload.fileType || 'application/octet-stream'),
+    fileSize: Number(payload.fileSize || blob.getBytes().length || 0),
+    fileUrl: driveFile.getUrl(),
+    uploadedBy: String(payload.uploadedBy || ''),
+    uploadedByName: String(payload.uploadedByName || ''),
+    uploadedAt: nowIso,
+    accessList: Array.from(new Set(accessList)),
+  };
+}
+
+function updateProjectDocumentAccess(payload) {
+  if (!payload || !payload.projectId) throw new Error('projectId is required');
+  if (!payload.documentId) throw new Error('documentId is required');
+
+  const projectRow = findProjectRow(payload.projectId);
+  if (!projectRow) throw new Error('Project not found: ' + payload.projectId);
+
+  const sheet = SS.getSheetByName(projectRow.sheetName);
+  if (!sheet) throw new Error('Project sheet not found: ' + projectRow.sheetName);
+
+  const data = sheet.getDataRange().getValues();
+  const accessList = Array.isArray(payload.accessList) ? Array.from(new Set(payload.accessList)) : [];
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) !== String(payload.documentId)) continue;
+    sheet.getRange(i + 1, 11).setValue(JSON.stringify(accessList));
+    data[i][10] = JSON.stringify(accessList);
+
+    const updated = parseDocumentRow(data[i]);
+    updated.projectId = String(payload.projectId);
+    return updated;
+  }
+
+  throw new Error('Document not found: ' + payload.documentId);
+}
+
+// ============ RULES ============
+
+const RULE_HEADERS = ['id', 'targetRole', 'title', 'content', 'active', 'sortOrder', 'createdBy', 'createdByName', 'updatedBy', 'updatedByName', 'createdAt', 'updatedAt'];
+
+function normalizeRuleTargetRole(role) {
+  const value = String(role || 'all');
+  const allowed = ['all', 'employee', 'lead', 'manager', 'hr', 'higher-management'];
+  return allowed.indexOf(value) === -1 ? 'all' : value;
+}
+
+function parseRuleRow(row) {
+  return {
+    id: String(row[0] || ''),
+    targetRole: normalizeRuleTargetRole(row[1]),
+    title: String(row[2] || ''),
+    content: String(row[3] || ''),
+    active: String(row[4]).toLowerCase() !== 'false',
+    sortOrder: Number(row[5] || 0),
+    createdBy: String(row[6] || ''),
+    createdByName: String(row[7] || ''),
+    updatedBy: String(row[8] || ''),
+    updatedByName: String(row[9] || ''),
+    createdAt: String(row[10] || ''),
+    updatedAt: String(row[11] || ''),
+  };
+}
+
+function getRulesSheetRows() {
+  const sheet = getSheet(RULES_SHEET);
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+
+  return values.slice(1).map(function(row, index) {
+    return {
+      rowNumber: index + 2,
+      rule: parseRuleRow(row),
+    };
+  });
+}
+
+function getRules() {
+  const rows = getRulesSheetRows();
+  const rules = rows.map(function(item) { return item.rule; }).sort(function(a, b) {
+    const sortDiff = Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
+    if (sortDiff !== 0) return sortDiff;
+    return String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''));
+  });
+
+  const latestUpdatedAt = rules.reduce(function(latest, rule) {
+    const timestamp = String(rule.updatedAt || rule.createdAt || '');
+    return timestamp > latest ? timestamp : latest;
+  }, '');
+
+  return { rules: rules, latestUpdatedAt: latestUpdatedAt };
+}
+
+function addRule(payload) {
+  if (!payload) throw new Error('payload is required');
+  if (!String(payload.title || '').trim()) throw new Error('title is required');
+  if (!String(payload.content || '').trim()) throw new Error('content is required');
+
+  const sheet = getSheet(RULES_SHEET);
+  const nowIso = new Date().toISOString();
+  const id = generateId();
+  const rule = {
+    id: id,
+    targetRole: normalizeRuleTargetRole(payload.targetRole),
+    title: String(payload.title || '').trim(),
+    content: String(payload.content || '').trim(),
+    active: payload.active !== false,
+    sortOrder: Number(payload.sortOrder || 0),
+    createdBy: String(payload.createdBy || ''),
+    createdByName: String(payload.createdByName || ''),
+    updatedBy: String(payload.updatedBy || payload.createdBy || ''),
+    updatedByName: String(payload.updatedByName || payload.createdByName || ''),
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+
+  sheet.appendRow([
+    rule.id,
+    rule.targetRole,
+    rule.title,
+    rule.content,
+    String(rule.active),
+    rule.sortOrder,
+    rule.createdBy,
+    rule.createdByName,
+    rule.updatedBy,
+    rule.updatedByName,
+    rule.createdAt,
+    rule.updatedAt,
+  ]);
+
+  return rule;
+}
+
+function updateRule(id, updates) {
+  if (!id) throw new Error('id is required');
+
+  const sheet = getSheet(RULES_SHEET);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) !== String(id)) continue;
+
+    const nowIso = new Date().toISOString();
+    const rule = parseRuleRow(data[i]);
+    if (updates.targetRole !== undefined) {
+      rule.targetRole = normalizeRuleTargetRole(updates.targetRole);
+      sheet.getRange(i + 1, 2).setValue(rule.targetRole);
+    }
+    if (updates.title !== undefined) {
+      rule.title = String(updates.title || '').trim();
+      sheet.getRange(i + 1, 3).setValue(rule.title);
+    }
+    if (updates.content !== undefined) {
+      rule.content = String(updates.content || '').trim();
+      sheet.getRange(i + 1, 4).setValue(rule.content);
+    }
+    if (updates.active !== undefined) {
+      rule.active = !!updates.active;
+      sheet.getRange(i + 1, 5).setValue(String(rule.active));
+    }
+    if (updates.sortOrder !== undefined) {
+      rule.sortOrder = Number(updates.sortOrder || 0);
+      sheet.getRange(i + 1, 6).setValue(rule.sortOrder);
+    }
+    if (updates.updatedBy !== undefined) {
+      rule.updatedBy = String(updates.updatedBy || '');
+      sheet.getRange(i + 1, 9).setValue(rule.updatedBy);
+    }
+    if (updates.updatedByName !== undefined) {
+      rule.updatedByName = String(updates.updatedByName || '');
+      sheet.getRange(i + 1, 10).setValue(rule.updatedByName);
+    }
+
+    rule.updatedAt = nowIso;
+    sheet.getRange(i + 1, 12).setValue(nowIso);
+    return rule;
+  }
+
+  throw new Error('Rule not found: ' + id);
+}
+
+function deleteRule(id) {
+  if (!id) throw new Error('id is required');
+
+  const sheet = getSheet(RULES_SHEET);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      return null;
+    }
+  }
+
+  throw new Error('Rule not found: ' + id);
 }

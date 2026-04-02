@@ -4,17 +4,19 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import {
-    LayoutDashboard, Users, FileText, CreditCard, Building2, LogOut, ShieldCheck, DollarSign, CalendarCheck2, Award
+    LayoutDashboard, Users, FileText, CreditCard, Building2, LogOut, ShieldCheck, DollarSign, CalendarCheck2, Award, FolderKanban, ScrollText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { canManageEmployees, canViewTeam, isFullAccessRole } from '@/lib/roleAccess';
 
 const adminLinks = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
     { href: '/admin/employees', label: 'Employees', icon: Users },
     { href: '/admin/penalties', label: 'Penalties', icon: FileText },
     { href: '/admin/issue-penalty', label: 'Issue Penalty', icon: ShieldCheck },
     { href: '/admin/attendance', label: 'Attendance', icon: CalendarCheck2 },
+    { href: '/admin/rules', label: 'Rules', icon: ScrollText },
     { href: '/admin/expenses', label: 'Expenses', icon: DollarSign },
     { href: '/admin/payroll', label: 'Payroll', icon: CreditCard },
     { href: '/bank-info', label: 'Bank Info', icon: Building2 },
@@ -22,15 +24,19 @@ const adminLinks = [
 
 const employeeLinks = [
     { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/employee/projects', label: 'Projects', icon: FolderKanban },
     { href: '/employee/performance', label: 'Performance Record', icon: Award },
     { href: '/employee/salary-slips', label: 'Salary Slips', icon: FileText },
+    { href: '/employee/rules', label: 'Rules', icon: ScrollText },
     { href: '/bank-info', label: 'Bank Info', icon: Building2 },
 ];
 
 const leadLinks = [
     { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/employee/projects', label: 'Projects', icon: FolderKanban },
     { href: '/employee/performance', label: 'Team Performance', icon: Award },
     { href: '/employee/salary-slips', label: 'Salary Slips', icon: FileText },
+    { href: '/employee/rules', label: 'Rules', icon: ScrollText },
     { href: '/bank-info', label: 'Bank Info', icon: Building2 },
 ];
 
@@ -71,14 +77,19 @@ export default function Sidebar() {
             {/* Nav */}
             <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                 {filteredLinks.map(({ href, label, icon: Icon }) => (
+                    (() => {
+                        const isActive = pathname === href || pathname.startsWith(`${href}/`);
+                        return (
                     <Link
                         key={href}
                         href={href}
-                        className={cn('sidebar-link', pathname === href && 'active')}
+                        className={cn('sidebar-link', isActive && 'active')}
                     >
                         <Icon size={18} />
                         {label}
                     </Link>
+                        );
+                    })()
                 ))}
             </nav>
 

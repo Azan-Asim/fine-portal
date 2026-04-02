@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Header from '@/components/Header';
 import PenaltyExpenseForm from '@/components/PenaltyExpenseForm';
 import PenaltyExpenseTable from '@/components/PenaltyExpenseTable';
@@ -19,6 +19,7 @@ type TabType = 'penalty-expenses' | 'company-expenses' | 'company-income' | 'rep
 
 export default function ExpensesPage() {
     const APPROVER_STORAGE_KEY = 'authorizedApproverConfig';
+    const COMPANY_EXPENSES_PAGE_SIZE = 10;
 
     const [activeTab, setActiveTab] = useState<TabType>('penalty-expenses');
     const [penaltyExpenses, setPenaltyExpenses] = useState<PenaltyExpense[]>([]);
@@ -35,6 +36,12 @@ export default function ExpensesPage() {
     const [showPenaltyExpenseForm, setShowPenaltyExpenseForm] = useState(false);
     const [showCompanyExpenseForm, setShowCompanyExpenseForm] = useState(false);
     const [showCompanyIncomeForm, setShowCompanyIncomeForm] = useState(false);
+
+    const [companyExpenseQuery, setCompanyExpenseQuery] = useState('');
+    const [companyExpenseMonth, setCompanyExpenseMonth] = useState('all');
+    const [companyExpensePaidBy, setCompanyExpensePaidBy] = useState('all');
+    const [companyExpenseApprovedBy, setCompanyExpenseApprovedBy] = useState('all');
+    const [companyExpensePage, setCompanyExpensePage] = useState(1);
 
     // Load data from Google Sheets
     const loadData = useCallback(async () => {
@@ -125,7 +132,6 @@ export default function ExpensesPage() {
             const newExpense = await addCompanyExpense(expense);
             setCompanyExpenses(prev => [newExpense, ...prev]);
         } catch (error) {
-            toast.error('Failed to add expense');
             throw error;
         }
     };
@@ -165,6 +171,67 @@ export default function ExpensesPage() {
     const totalPenaltyExpenses = penaltyExpenses.reduce((sum, e) => sum + e.amount, 0);
     const totalCompanyExpenses = companyExpenses.reduce((sum, e) => sum + e.amount, 0);
     const totalCompanyIncome = companyIncomes.reduce((sum, i) => sum + i.amount, 0);
+
+    const companyExpenseMonths = useMemo(() => {
+        const months = Array.from(new Set(companyExpenses.map((expense) => {
+            const date = new Date(expense.date);
+            return isNaN(date.getTime()) ? 'Unknown Month' : date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        })));
+        return months.sort((a, b) => (a < b ? 1 : -1));
+    }, [companyExpenses]);
+
+    const companyExpensePaidByOptions = useMemo(() => {
+        return Array.from(new Set(companyExpenses.map((expense) => String(expense.paidBy || '').trim()).filter(Boolean))).sort();
+    }, [companyExpenses]);
+
+    const companyExpenseApprovedByOptions = useMemo(() => {
+        return Array.from(new Set(companyExpenses.map((expense) => String(expense.approvedBy || '').trim()).filter(Boolean))).sort();
+    }, [companyExpenses]);
+
+    const filteredCompanyExpenses = useMemo(() => {
+        const term = companyExpenseQuery.trim().toLowerCase();
+
+        return companyExpenses.filter((expense) => {
+            const expenseDate = new Date(expense.date);
+            const expenseMonth = isNaN(expenseDate.getTime()) ? 'Unknown Month' : expenseDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+            const matchMonth = companyExpenseMonth === 'all' || expenseMonth === companyExpenseMonth;
+            const matchPaidBy = companyExpensePaidBy === 'all' || String(expense.paidBy || '').trim() === companyExpensePaidBy;
+            const matchApprovedBy = companyExpenseApprovedBy === 'all' || String(expense.approvedBy || '').trim() === companyExpenseApprovedBy;
+
+            if (!term) {
+                return matchMonth && matchPaidBy && matchApprovedBy;
+            }
+
+            const haystack = [
+                expense.description,
+                expense.paidBy,
+                expense.approvedBy,
+                expense.paymentMethod,
+                expense.receiptUrl,
+                expense.notes,
+                expense.date,
+            ].join(' ').toLowerCase();
+
+            return matchMonth && matchPaidBy && matchApprovedBy && haystack.includes(term);
+        });
+    }, [companyExpenses, companyExpenseQuery, companyExpenseMonth, companyExpensePaidBy, companyExpenseApprovedBy]);
+
+    const companyExpensesTotalPages = Math.max(1, Math.ceil(filteredCompanyExpenses.length / COMPANY_EXPENSES_PAGE_SIZE));
+    const paginatedCompanyExpenses = useMemo(() => {
+        const start = (companyExpensePage - 1) * COMPANY_EXPENSES_PAGE_SIZE;
+        return filteredCompanyExpenses.slice(start, start + COMPANY_EXPENSES_PAGE_SIZE);
+    }, [filteredCompanyExpenses, companyExpensePage]);
+
+    useEffect(() => {
+        setCompanyExpensePage(1);
+    }, [companyExpenseQuery, companyExpenseMonth, companyExpensePaidBy, companyExpenseApprovedBy]);
+
+    useEffect(() => {
+        if (companyExpensePage > companyExpensesTotalPages) {
+            setCompanyExpensePage(companyExpensesTotalPages);
+        }
+    }, [companyExpensePage, companyExpensesTotalPages]);
 
     if (loading) {
         return (
@@ -358,10 +425,74 @@ export default function ExpensesPage() {
                             </div>
 
                             <div className="rounded-lg p-6" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                                    <input
+                                        className="input"
+                                        placeholder="Search description, paid by, notes..."
+                                        value={companyExpenseQuery}
+                                        onChange={(event) => setCompanyExpenseQuery(event.target.value)}
+                                    />
+                                    <select
+                                        className="select"
+                                        value={companyExpenseMonth}
+                                        onChange={(event) => setCompanyExpenseMonth(event.target.value)}
+                                    >
+                                        <option value="all">All Months</option>
+                                        {companyExpenseMonths.map((month) => (
+                                            <option key={month} value={month}>{month}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        className="select"
+                                        value={companyExpensePaidBy}
+                                        onChange={(event) => setCompanyExpensePaidBy(event.target.value)}
+                                    >
+                                        <option value="all">All Paid By</option>
+                                        {companyExpensePaidByOptions.map((person) => (
+                                            <option key={person} value={person}>{person}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        className="select"
+                                        value={companyExpenseApprovedBy}
+                                        onChange={(event) => setCompanyExpenseApprovedBy(event.target.value)}
+                                    >
+                                        <option value="all">All Approved By</option>
+                                        {companyExpenseApprovedByOptions.map((person) => (
+                                            <option key={person} value={person}>{person}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
                                 <CompanyExpenseTable
-                                    expenses={companyExpenses}
+                                    expenses={paginatedCompanyExpenses}
                                     onDelete={handleDeleteCompanyExpense}
                                 />
+
+                                <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                        Showing {paginatedCompanyExpenses.length} of {filteredCompanyExpenses.length} expenses
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            className="btn-secondary"
+                                            disabled={companyExpensePage <= 1}
+                                            onClick={() => setCompanyExpensePage((previous) => Math.max(1, previous - 1))}
+                                        >
+                                            Previous
+                                        </button>
+                                        <span className="text-sm px-2" style={{ color: 'var(--text-secondary)' }}>
+                                            Page {companyExpensePage} / {companyExpensesTotalPages}
+                                        </span>
+                                        <button
+                                            className="btn-secondary"
+                                            disabled={companyExpensePage >= companyExpensesTotalPages}
+                                            onClick={() => setCompanyExpensePage((previous) => Math.min(companyExpensesTotalPages, previous + 1))}
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             {showCompanyExpenseForm && (

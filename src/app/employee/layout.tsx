@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Sidebar from '@/components/Sidebar';
 import { isFullAccessRole } from '@/lib/roleAccess';
+import RulesGate from '@/components/RulesGate';
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
     const { user, isLoading } = useAuth();
@@ -26,11 +27,13 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
     }
 
     return (
-        <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="flex-1 ml-64 flex flex-col min-h-screen overflow-x-hidden">
-                {children}
-            </main>
-        </div>
+        <RulesGate>
+            <div className="flex min-h-screen">
+                <Sidebar />
+                <main className="flex-1 ml-64 flex flex-col min-h-screen overflow-x-hidden">
+                    {children}
+                </main>
+            </div>
+        </RulesGate>
     );
 }

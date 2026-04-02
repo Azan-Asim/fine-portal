@@ -20,6 +20,14 @@ export function canEditFinalPerformanceReview(role?: UserRole): boolean {
     return role === 'hr' || role === 'higher-management';
 }
 
+export function canManageRules(role?: UserRole): boolean {
+    return role === 'hr' || role === 'higher-management';
+}
+
+export function canBypassRulesGate(role?: UserRole): boolean {
+    return role === 'higher-management';
+}
+
 export function getHomePathByRole(role?: UserRole): string {
     if (!role) return '/login';
     return isFullAccessRole(role) ? '/admin/dashboard' : '/employee/dashboard';

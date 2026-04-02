@@ -17,6 +17,9 @@ import {
     SalarySlip,
     UserRole,
     Department,
+    ProjectItem,
+    ProjectDocument,
+    RuleItem,
 } from '@/types';
 
 async function request<T>(action: string, data?: object): Promise<T> {
@@ -178,6 +181,10 @@ export async function getAttendanceByDate(date: string): Promise<AttendanceRecor
     return request<AttendanceRecord[]>('getAttendanceByDate', { date });
 }
 
+export async function getAttendanceRecords(): Promise<AttendanceRecord[]> {
+    return request<AttendanceRecord[]>('getAttendanceRecords');
+}
+
 export async function upsertAttendanceRecord(data: {
     employeeId: string;
     date: string;
@@ -231,6 +238,10 @@ export async function getPerformanceRecord(employeeId: string, month: number, ye
     return request<PerformanceRecord | null>('getPerformanceRecord', { employeeId, month, year });
 }
 
+export async function getPerformanceRecords(): Promise<PerformanceRecord[]> {
+    return request<PerformanceRecord[]>('getPerformanceRecords');
+}
+
 export async function getRolePermissions(role: UserRole): Promise<{
     fullAccess: boolean;
     canViewTeam: boolean;
@@ -241,4 +252,59 @@ export async function getRolePermissions(role: UserRole): Promise<{
 
 export function validateLeadDepartment(role: UserRole, department: Department): boolean {
     return role !== 'lead' || !!department;
+}
+
+// ============ PROJECT DOCUMENTS ============
+
+export async function getProjects(): Promise<ProjectItem[]> {
+    return request<ProjectItem[]>('getProjects');
+}
+
+export async function getProjectDocumentCounts(): Promise<Record<string, number>> {
+    return request<Record<string, number>>('getProjectDocumentCounts');
+}
+
+export async function getProjectDocuments(projectId: string): Promise<ProjectDocument[]> {
+    return request<ProjectDocument[]>('getProjectDocuments', { projectId });
+}
+
+// ============ RULES ============
+
+export async function getRules(): Promise<{ rules: RuleItem[]; latestUpdatedAt: string }> {
+    return request<{ rules: RuleItem[]; latestUpdatedAt: string }>('getRules');
+}
+
+export async function addRule(data: Omit<RuleItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<RuleItem> {
+    return request<RuleItem>('addRule', data);
+}
+
+export async function updateRule(id: string, updates: Partial<Omit<RuleItem, 'id' | 'createdAt'>>): Promise<RuleItem> {
+    return request<RuleItem>('updateRule', { id, updates });
+}
+
+export async function deleteRule(id: string): Promise<void> {
+    return request<void>('deleteRule', { id });
+}
+
+export async function uploadProjectDocument(data: {
+    projectId: string;
+    title: string;
+    description: string;
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+    fileContent: string;
+    uploadedBy: string;
+    uploadedByName: string;
+    accessList: string[];
+}): Promise<ProjectDocument> {
+    return request<ProjectDocument>('uploadProjectDocument', data);
+}
+
+export async function updateProjectDocumentAccess(data: {
+    projectId: string;
+    documentId: string;
+    accessList: string[];
+}): Promise<ProjectDocument> {
+    return request<ProjectDocument>('updateProjectDocumentAccess', data);
 }

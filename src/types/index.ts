@@ -2,6 +2,7 @@
 
 export type UserRole = 'employee' | 'lead' | 'manager' | 'hr' | 'higher-management';
 export type Department = 'web' | 'app' | 'backend' | 'overall' | '';
+export type RuleTargetRole = UserRole | 'all';
 
 export interface AuthUser {
     id: string;
@@ -187,6 +188,21 @@ export interface PerformanceRecord {
     updatedAt: string;
 }
 
+export interface RuleItem {
+    id: string;
+    targetRole: RuleTargetRole;
+    title: string;
+    content: string;
+    active: boolean;
+    sortOrder: number;
+    createdBy: string;
+    createdByName: string;
+    updatedBy: string;
+    updatedByName: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export type AttendanceDayType = 'Working Day' | 'Holiday';
 export type AttendanceStatus = 'Present' | 'Absent' | 'Leave' | 'Holiday';
 
@@ -234,4 +250,27 @@ export interface EmployeeMonthlyAttendanceSummary {
     maxPerformanceScore: number;
     performance: PerformanceRecord | null;
     records: AttendanceRecord[];
+}
+
+export interface ProjectItem {
+    id: string;
+    name: string;
+    description: string;
+    allowedDepartments: Department[];
+    createdAt: string;
+}
+
+export interface ProjectDocument {
+    id: string;
+    projectId: string;
+    title: string;
+    description: string;
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+    fileUrl: string;
+    uploadedBy: string;
+    uploadedByName: string;
+    uploadedAt: string;
+    accessList: string[];
 }
