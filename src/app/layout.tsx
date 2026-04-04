@@ -18,6 +18,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        {/* <script type="module" src="https://widget.chatsupplies.com/index.js" id="chatbot" data-admin-id="112"   api-key="KZ9ztNqmAZQSVo6AYivl"></script> */}
+        </head>
       <body suppressHydrationWarning className={`${geist.className} antialiased`}>
         <AuthProvider>
           {children}

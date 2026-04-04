@@ -6,15 +6,7 @@ import DashboardStatGrid, { DashboardStatCard } from '@/components/dashboard/Das
 import SimpleBarChart, { BarChartItem } from '@/components/dashboard/SimpleBarChart';
 import { useAuth } from '@/context/AuthContext';
 import {
-    getEmployees,
-    getPenalties,
-    getCompanyExpenses,
-    getCompanyIncomes,
-    getPayrollRecords,
-    getProjects,
-    getProjectDocumentCounts,
-    getAttendanceRecords,
-    getPerformanceRecords,
+    getManagementDashboardData,
 } from '@/lib/googleSheets';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -81,29 +73,8 @@ export default function ManagementDashboardView() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [employees, penalties, companyExpenses, companyIncomes, payrollRecords, projects, projectDocumentCounts, attendanceRecords, performanceRecords] = await Promise.all([
-                getEmployees(),
-                getPenalties(),
-                getCompanyExpenses(),
-                getCompanyIncomes(),
-                getPayrollRecords(),
-                getProjects(),
-                getProjectDocumentCounts(),
-                getAttendanceRecords(),
-                getPerformanceRecords(),
-            ]);
-
-            setBundle({
-                employees,
-                penalties,
-                companyExpenses,
-                companyIncomes,
-                payrollRecords,
-                projects,
-                projectDocumentCounts,
-                attendanceRecords,
-                performanceRecords,
-            });
+            const data = await getManagementDashboardData();
+            setBundle(data);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to load dashboard data.';
             toast.error(message);

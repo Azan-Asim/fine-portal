@@ -22,6 +22,28 @@ import {
     RuleItem,
 } from '@/types';
 
+export interface ManagementDashboardData {
+    employees: Employee[];
+    penalties: Penalty[];
+    companyExpenses: CompanyExpense[];
+    companyIncomes: CompanyIncome[];
+    payrollRecords: PayrollRecord[];
+    projects: ProjectItem[];
+    projectDocumentCounts: Record<string, number>;
+    attendanceRecords: AttendanceRecord[];
+    performanceRecords: PerformanceRecord[];
+}
+
+export interface StaffDashboardData {
+    employees: Employee[];
+    penalties: Penalty[];
+    salarySlips: SalarySlip[];
+    monthlyAttendance: EmployeeMonthlyAttendanceSummary;
+    currentPerformance: PerformanceRecord | null;
+    attendanceRecords: AttendanceRecord[];
+    performanceRecords: PerformanceRecord[];
+}
+
 async function request<T>(action: string, data?: object): Promise<T> {
     const res = await fetch('/api/google-sheets', {
         method: 'POST',
@@ -272,6 +294,14 @@ export async function getProjectDocuments(projectId: string): Promise<ProjectDoc
 
 export async function getRules(): Promise<{ rules: RuleItem[]; latestUpdatedAt: string }> {
     return request<{ rules: RuleItem[]; latestUpdatedAt: string }>('getRules');
+}
+
+export async function getManagementDashboardData(): Promise<ManagementDashboardData> {
+    return request<ManagementDashboardData>('getManagementDashboardData');
+}
+
+export async function getStaffDashboardData(employeeId: string, month: number, year: number): Promise<StaffDashboardData> {
+    return request<StaffDashboardData>('getStaffDashboardData', { employeeId, month, year });
 }
 
 export async function addRule(data: Omit<RuleItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<RuleItem> {

@@ -13,21 +13,27 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-    const [user, setUser] = useState<AuthUser | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+function readStoredUser(): AuthUser | null {
+    if (typeof window === 'undefined') {
+        return null;
+    }
 
-    useEffect(() => {
-        const stored = localStorage.getItem('fine_portal_user');
-        if (stored) {
-            try {
-                setUser(JSON.parse(stored));
-            } catch {
-                localStorage.removeItem('fine_portal_user');
-            }
-        }
-        setIsLoading(false);
-    }, []);
+    const stored = localStorage.getItem('fine_portal_user');
+    if (!stored) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(stored) as AuthUser;
+    } catch {
+        localStorage.removeItem('fine_portal_user');
+        return null;
+    }
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+    const [user, setUser] = useState<AuthUser | null>(() => readStoredUser());
+    const [isLoading, setIsLoading] = useState(false);
 
     const findRegisteredUser = async (email: string): Promise<AuthUser | null> => {
         const normalizedEmail = email.trim().toLowerCase();

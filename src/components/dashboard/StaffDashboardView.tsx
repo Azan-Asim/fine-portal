@@ -6,13 +6,7 @@ import DashboardStatGrid, { DashboardStatCard } from '@/components/dashboard/Das
 import SimpleBarChart, { BarChartItem } from '@/components/dashboard/SimpleBarChart';
 import { useAuth } from '@/context/AuthContext';
 import {
-    getAttendanceRecords,
-    getEmployeeMonthlyAttendance,
-    getEmployees,
-    getPenalties,
-    getPerformanceRecord,
-    getPerformanceRecords,
-    getSalarySlipsForEmployee,
+    getStaffDashboardData,
 } from '@/lib/googleSheets';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { AttendanceRecord, Employee, PaymentType, Penalty, PerformanceRecord, SalarySlip } from '@/types';
@@ -60,23 +54,15 @@ export default function StaffDashboardView() {
         if (!user) return;
         setLoading(true);
         try {
-            const [penaltyData, salarySlipData, attendanceSummary, performance, teamEmployees, allAttendance, allPerformance] = await Promise.all([
-                getPenalties(),
-                getSalarySlipsForEmployee(user.id),
-                getEmployeeMonthlyAttendance(user.id, now.getMonth() + 1, now.getFullYear()),
-                getPerformanceRecord(user.id, now.getMonth() + 1, now.getFullYear()),
-                getEmployees(),
-                getAttendanceRecords(),
-                getPerformanceRecords(),
-            ]);
+            const data = await getStaffDashboardData(user.id, now.getMonth() + 1, now.getFullYear());
 
-            setPenalties(penaltyData.filter((item) => item.email.toLowerCase() === user.email.toLowerCase()));
-            setSalarySlips(salarySlipData);
-            setMonthlyAttendance(attendanceSummary);
-            setCurrentPerformance(performance);
-            setEmployees(teamEmployees);
-            setAttendanceRecords(allAttendance);
-            setPerformanceRecords(allPerformance);
+            setPenalties(data.penalties.filter((item) => item.email.toLowerCase() === user.email.toLowerCase()));
+            setSalarySlips(data.salarySlips);
+            setMonthlyAttendance(data.monthlyAttendance);
+            setCurrentPerformance(data.currentPerformance);
+            setEmployees(data.employees);
+            setAttendanceRecords(data.attendanceRecords);
+            setPerformanceRecords(data.performanceRecords);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to load dashboard data.';
             toast.error(message);

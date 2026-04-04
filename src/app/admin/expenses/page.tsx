@@ -19,7 +19,7 @@ type TabType = 'penalty-expenses' | 'company-expenses' | 'company-income' | 'rep
 
 export default function ExpensesPage() {
     const APPROVER_STORAGE_KEY = 'authorizedApproverConfig';
-    const COMPANY_EXPENSES_PAGE_SIZE = 10;
+    const COMPANY_EXPENSES_PAGE_SIZE = 30;
 
     const [activeTab, setActiveTab] = useState<TabType>('penalty-expenses');
     const [penaltyExpenses, setPenaltyExpenses] = useState<PenaltyExpense[]>([]);

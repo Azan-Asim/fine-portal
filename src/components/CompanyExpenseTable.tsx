@@ -16,6 +16,10 @@ export default function CompanyExpenseTable({ expenses, onDelete }: CompanyExpen
         }
     };
 
+    const sortedExpenses = [...expenses].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+
     if (expenses.length === 0) {
         return (
             <div className="text-center py-8 text-gray-500">
@@ -40,7 +44,7 @@ export default function CompanyExpenseTable({ expenses, onDelete }: CompanyExpen
                     </tr>
                 </thead>
                 <tbody>
-                    {expenses.map((expense) => (
+                    {sortedExpenses.map((expense) => (
                         <tr
                             key={expense.id}
                             style={{ borderBottom: '1px solid var(--border)' }}

@@ -88,6 +88,10 @@ function doGet(e) {
     if (action === 'uploadProjectDocument') return respond(uploadProjectDocument(payload));
     if (action === 'updateProjectDocumentAccess') return respond(updateProjectDocumentAccess(payload));
 
+    // Dashboards
+    if (action === 'getManagementDashboardData') return respond(getManagementDashboardData());
+    if (action === 'getStaffDashboardData') return respond(getStaffDashboardData(payload.employeeId, payload.month, payload.year));
+
     // Rules
     if (action === 'getRules') return respond(getRules());
     if (action === 'addRule') return respond(addRule(payload));
@@ -1586,6 +1590,37 @@ function getProjectDocumentCounts() {
   });
 
   return counts;
+}
+
+function getManagementDashboardData() {
+  return {
+    employees: getEmployees(),
+    penalties: getPenalties(),
+    companyExpenses: getCompanyExpenses(),
+    companyIncomes: getCompanyIncomes(),
+    payrollRecords: getPayrollRecords(),
+    projects: getProjects(),
+    projectDocumentCounts: getProjectDocumentCounts(),
+    attendanceRecords: getAttendanceRecords(),
+    performanceRecords: getPerformanceRecords(),
+  };
+}
+
+function getStaffDashboardData(employeeId, month, year) {
+  if (!employeeId) throw new Error('employeeId is required');
+  const m = Number(month);
+  const y = Number(year);
+  if (!m || !y) throw new Error('month and year are required');
+
+  return {
+    employees: getEmployees(),
+    penalties: getPenalties(),
+    salarySlips: getSalarySlipsForEmployee(employeeId),
+    monthlyAttendance: getEmployeeMonthlyAttendance(employeeId, m, y),
+    currentPerformance: getPerformanceRecord(employeeId, m, y),
+    attendanceRecords: getAttendanceRecords(),
+    performanceRecords: getPerformanceRecords(),
+  };
 }
 
 function findProjectRow(projectId) {

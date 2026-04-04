@@ -13,26 +13,98 @@ interface RulesGateProps {
     children: ReactNode;
 }
 
+interface CachedRulesState {
+    rules: RuleItem[];
+    latestUpdatedAt: string;
+}
+
+const RULES_CACHE_KEY = 'fine_portal_rules_cache';
+
 function getAcceptanceKey(userId: string) {
     return `fine_portal_rules_accepted:${userId}`;
 }
 
+function readCachedRules(): CachedRulesState | null {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+
+    const stored = localStorage.getItem(RULES_CACHE_KEY);
+    if (!stored) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(stored) as CachedRulesState;
+        return {
+            rules: Array.isArray(parsed.rules) ? parsed.rules : [],
+            latestUpdatedAt: typeof parsed.latestUpdatedAt === 'string' ? parsed.latestUpdatedAt : '',
+        };
+    } catch {
+        localStorage.removeItem(RULES_CACHE_KEY);
+        return null;
+    }
+}
+
+function saveCachedRules(state: CachedRulesState) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    localStorage.setItem(RULES_CACHE_KEY, JSON.stringify(state));
+}
+
+function readAcceptanceVersion(userId: string) {
+    if (typeof window === 'undefined') {
+        return '';
+    }
+
+    const stored = localStorage.getItem(getAcceptanceKey(userId));
+    if (!stored) {
+        return '';
+    }
+
+    try {
+        const parsed = JSON.parse(stored) as { version?: string };
+        return parsed.version || '';
+    } catch {
+        return '';
+    }
+}
+
+function getRelevantRules(rules: RuleItem[], role?: string) {
+    if (!role) {
+        return [];
+    }
+
+    return rules
+        .filter((rule) => rule.active && (rule.targetRole === 'all' || rule.targetRole === role))
+        .sort((a, b) => {
+            const orderDiff = Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
+            if (orderDiff !== 0) return orderDiff;
+            return String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''));
+        });
+}
+
 export default function RulesGate({ children }: RulesGateProps) {
     const { user, logout } = useAuth();
-    const [rules, setRules] = useState<RuleItem[]>([]);
-    const [latestUpdatedAt, setLatestUpdatedAt] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [accepted, setAccepted] = useState(false);
+    const cachedRules = useMemo(() => readCachedRules(), []);
+    const [rules, setRules] = useState<RuleItem[]>(cachedRules?.rules || []);
+    const [latestUpdatedAt, setLatestUpdatedAt] = useState(cachedRules?.latestUpdatedAt || '');
+    const [loading, setLoading] = useState(() => Boolean(user && !canBypassRulesGate(user.role) && !cachedRules));
+    const [accepted, setAccepted] = useState(() => {
+        if (!user) return true;
+        if (canBypassRulesGate(user.role)) return true;
+
+        const relevant = getRelevantRules(cachedRules?.rules || [], user.role);
+        if (relevant.length === 0) return true;
+
+        return readAcceptanceVersion(user.id) === (cachedRules?.latestUpdatedAt || '');
+    });
 
     const relevantRules = useMemo(() => {
         if (!user) return [];
-        return rules
-            .filter((rule) => rule.active && (rule.targetRole === 'all' || rule.targetRole === user.role))
-            .sort((a, b) => {
-                const orderDiff = Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
-                if (orderDiff !== 0) return orderDiff;
-                return String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''));
-            });
+        return getRelevantRules(rules, user.role);
     }, [rules, user]);
 
     useEffect(() => {
@@ -58,27 +130,16 @@ export default function RulesGate({ children }: RulesGateProps) {
 
                 setRules(response.rules);
                 setLatestUpdatedAt(response.latestUpdatedAt || '');
+                saveCachedRules({ rules: response.rules, latestUpdatedAt: response.latestUpdatedAt || '' });
 
-                const nextRelevantRules = response.rules.filter(
-                    (rule) => rule.active && (rule.targetRole === 'all' || rule.targetRole === user.role)
-                );
+                const nextRelevantRules = getRelevantRules(response.rules, user.role);
 
                 if (nextRelevantRules.length === 0) {
                     setAccepted(true);
                     return;
                 }
 
-                const stored = localStorage.getItem(getAcceptanceKey(user.id));
-                if (stored) {
-                    try {
-                        const parsed = JSON.parse(stored) as { version?: string };
-                        setAccepted(parsed.version === (response.latestUpdatedAt || ''));
-                    } catch {
-                        setAccepted(false);
-                    }
-                } else {
-                    setAccepted(false);
-                }
+                setAccepted(readAcceptanceVersion(user.id) === (response.latestUpdatedAt || ''));
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'Failed to load rules.';
                 toast.error(message);
