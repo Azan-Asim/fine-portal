@@ -77,9 +77,9 @@ export default function ProjectsDashboardView({ basePath }: ProjectsDashboardVie
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {filtered.map((project) => (
+                        {filtered.map((project, index) => (
                             <Link
-                                key={project.id}
+                                key={`${project.id}-${index}`}
                                 href={`${basePath}/${project.id}`}
                                 className="card transition-all hover:-translate-y-0.5"
                                 style={{ textDecoration: 'none' }}

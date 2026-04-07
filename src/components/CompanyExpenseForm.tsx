@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CompanyExpense, PaymentMethod } from '@/types';
 import toast from 'react-hot-toast';
 import { Employee } from '@/types';
@@ -16,22 +16,37 @@ interface CompanyExpenseFormProps {
     onSubmit: (expense: Omit<CompanyExpense, 'id' | 'createdAt'>) => Promise<void>;
     onClose: () => void;
     approvers: Employee[];
+    initialExpense?: CompanyExpense | null;
 }
 
 const paymentMethods: PaymentMethod[] = ['Cash', 'Bank Transfer', 'JazzCash', 'Check'];
 
-export default function CompanyExpenseForm({ onSubmit, onClose, approvers }: CompanyExpenseFormProps) {
+export default function CompanyExpenseForm({ onSubmit, onClose, approvers, initialExpense }: CompanyExpenseFormProps) {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-        amount: '',
-        paidBy: '',
-        approvedBy: '',
-        paymentMethod: 'Cash' as PaymentMethod,
-        receiptUrl: '',
-        notes: ''
+        date: initialExpense?.date || new Date().toISOString().split('T')[0],
+        description: initialExpense?.description || '',
+        amount: initialExpense ? String(initialExpense.amount) : '',
+        paidBy: initialExpense?.paidBy || '',
+        approvedBy: initialExpense?.approvedBy || '',
+        paymentMethod: initialExpense?.paymentMethod || ('Cash' as PaymentMethod),
+        receiptUrl: initialExpense?.receiptUrl || '',
+        notes: initialExpense?.notes || ''
     });
+
+    useEffect(() => {
+        if (!initialExpense) return;
+        setFormData({
+            date: initialExpense.date,
+            description: initialExpense.description,
+            amount: String(initialExpense.amount),
+            paidBy: initialExpense.paidBy,
+            approvedBy: initialExpense.approvedBy,
+            paymentMethod: initialExpense.paymentMethod,
+            receiptUrl: initialExpense.receiptUrl,
+            notes: initialExpense.notes,
+        });
+    }, [initialExpense]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -67,10 +82,10 @@ export default function CompanyExpenseForm({ onSubmit, onClose, approvers }: Com
                 receiptUrl: formData.receiptUrl,
                 notes: formData.notes,
             });
-            toast.success('Expense added successfully');
+            toast.success(initialExpense ? 'Expense updated successfully' : 'Expense added successfully');
             onClose();
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to add expense';
+            const message = error instanceof Error ? error.message : (initialExpense ? 'Failed to update expense' : 'Failed to add expense');
             toast.error(message);
         } finally {
             setLoading(false);
@@ -81,9 +96,9 @@ export default function CompanyExpenseForm({ onSubmit, onClose, approvers }: Com
         <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
             <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto" showCloseButton={false}>
                 <DialogHeader>
-                    <DialogTitle>Add Company Expense</DialogTitle>
+                    <DialogTitle>{initialExpense ? 'Edit Company Expense' : 'Add Company Expense'}</DialogTitle>
                     <DialogDescription>
-                        Add a new company expense entry.
+                        {initialExpense ? 'Update this company expense entry.' : 'Add a new company expense entry.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -231,7 +246,7 @@ export default function CompanyExpenseForm({ onSubmit, onClose, approvers }: Com
                             disabled={loading}
                             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                         >
-                            {loading ? 'Adding...' : 'Add Expense'}
+                            {loading ? (initialExpense ? 'Saving...' : 'Adding...') : (initialExpense ? 'Save Changes' : 'Add Expense')}
                         </button>
                     </div>
                 </form>

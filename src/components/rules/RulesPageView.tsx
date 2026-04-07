@@ -23,7 +23,7 @@ const ROLE_OPTIONS: Array<{ value: RuleTargetRole; label: string }> = [
     { value: 'lead', label: 'Lead' },
     { value: 'manager', label: 'Manager' },
     { value: 'hr', label: 'HR' },
-    { value: 'higher-management', label: 'Higher Management' },
+    { value: 'admin', label: 'Admin' },
 ];
 
 type RuleFormState = {
@@ -42,6 +42,8 @@ const EMPTY_FORM: RuleFormState = {
     sortOrder: 0,
 };
 
+const ENABLE_RULES_API = false;
+
 export default function RulesPageView({ basePath, title, subtitle }: RulesPageViewProps) {
     const { user } = useAuth();
     const canManage = canManageRules(user?.role);
@@ -53,6 +55,12 @@ export default function RulesPageView({ basePath, title, subtitle }: RulesPageVi
     const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
 
     const loadRules = useCallback(async () => {
+        if (!ENABLE_RULES_API) {
+            setRules([]);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             const response = await getRules();

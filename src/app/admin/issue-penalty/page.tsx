@@ -6,8 +6,6 @@ import { getEmployees, addPenalty } from '@/lib/googleSheets';
 import { sendPenaltyEmail } from '@/lib/emailjs';
 import { Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
 import { Send, Loader2, CalendarDays } from 'lucide-react';
 import ImageUploader from '@/components/ImageUploader';
 import toast from 'react-hot-toast';
@@ -24,6 +22,8 @@ export default function IssuePenaltyPage() {
     const [referenceUrl, setReferenceUrl] = useState(''); // holds the uploaded ImgBB URL
 
     const selectedEmp = employees.find(e => e.id === selectedEmpId);
+
+    const dateValue = date ? date.toISOString().split('T')[0] : '';
 
     useEffect(() => {
         getEmployees().then(setEmployees).catch(() => toast.error('Failed to load employees.')).finally(() => setLoadingEmps(false));
@@ -127,11 +127,14 @@ export default function IssuePenaltyPage() {
                                         <label className="label">Penalty Date *</label>
                                         <div className="input flex items-center gap-2" style={{ cursor: 'pointer' }}>
                                             <CalendarDays size={16} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-                                            <DatePicker
-                                                selected={date}
-                                                onChange={(d: Date | null) => setDate(d)}
-                                                dateFormat="yyyy-MM-dd"
-                                                placeholderText="Select date"
+                                            <input
+                                                type="date"
+                                                value={dateValue}
+                                                onChange={(event) => {
+                                                    const value = event.target.value;
+                                                    setDate(value ? new Date(`${value}T00:00:00`) : null);
+                                                }}
+                                                className="w-full bg-transparent outline-none"
                                             />
                                         </div>
                                     </div>

@@ -4,21 +4,23 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Sidebar from '@/components/Sidebar';
-import { isFullAccessRole } from '@/lib/roleAccess';
+import { isFullAccessRole, parseRoleList } from '@/lib/roleAccess';
 import RulesGate from '@/components/RulesGate';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const { user, isLoading } = useAuth();
     const router = useRouter();
+    const assignedRoles = parseRoleList(user?.roles && user.roles.length > 0 ? user.roles : user?.role);
+    const hasAdminAccess = assignedRoles.some((role) => isFullAccessRole(role));
 
     useEffect(() => {
         if (!isLoading) {
             if (!user) router.push('/login');
-            else if (!isFullAccessRole(user.role)) router.push('/employee/dashboard');
+            else if (!hasAdminAccess) router.push('/employee/dashboard');
         }
-    }, [user, isLoading, router]);
+    }, [user, isLoading, hasAdminAccess, router]);
 
-    if (isLoading || !user || !isFullAccessRole(user.role)) {
+    if (isLoading || !user || !hasAdminAccess) {
         return (
             <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
                 <div className="spinner" style={{ width: 36, height: 36 }} />

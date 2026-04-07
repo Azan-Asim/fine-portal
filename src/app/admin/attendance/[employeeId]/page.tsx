@@ -236,7 +236,7 @@ export default function EmployeeAttendanceDetailPage({ params }: Props) {
                                 </div>
                             </div>
                             <div className="mt-4 p-4 rounded" style={{ background: 'var(--bg-hover)' }}>
-                                <h4 className="font-semibold">Final Monthly Review (HR / Higher Management)</h4>
+                                <h4 className="font-semibold">Final Monthly Review (HR / Admin)</h4>
                                 <div className="mt-3">
                                     <label className="label">Final Comment</label>
                                     <textarea className="input" rows={3} value={finalComment} onChange={(e) => setFinalComment(e.target.value)} placeholder="Final monthly review comment" disabled={!canEditFinalPerformanceReview(user?.role)} />

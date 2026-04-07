@@ -3,10 +3,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Header from '@/components/Header';
 import { getEmployees, addEmployee, updateEmployee, deleteEmployee } from '@/lib/googleSheets';
-import { Department, Employee, UserRole } from '@/types';
+import { Department, Employee, PermissionKey, UserRole } from '@/types';
 import { UserPlus, Trash2, Search, Loader2, Users, Edit, Image as ImageIcon, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { uploadImage } from '@/lib/uploadImage';
+import { hasAnyRole, hasPermission, parseRoleList } from '@/lib/roleAccess';
+import { useAuth } from '@/context/AuthContext';
 
 type EmployeeFormData = {
     name: string;
@@ -19,21 +21,42 @@ type EmployeeFormData = {
     bankAccountNumber: string;
     address: string;
     jobPosition: string;
-    role: UserRole;
+    roles: UserRole[];
+    permissions: PermissionKey[];
     department: Department;
     leadId: string;
     status: string;
     joiningDate: string;
     contactNumber: string;
+    startWorkingTime: string;
 };
 
 const initialForm: EmployeeFormData = {
     name: '', email: '', fatherName: '', cnic: '', picture: '',
     bankName: '', bankTitle: '', bankAccountNumber: '', address: '',
-    jobPosition: '', role: 'employee', department: '', leadId: '', status: 'Currently Working', joiningDate: '', contactNumber: ''
+    jobPosition: '', roles: ['employee'], permissions: [], department: '', leadId: '', status: 'Currently Working', joiningDate: '', contactNumber: '', startWorkingTime: '09:00'
 };
 
+const ASSIGNABLE_ROLES: UserRole[] = ['employee', 'lead', 'manager', 'hr', 'admin'];
+const ASSIGNABLE_PERMISSIONS: Array<{ key: PermissionKey; label: string }> = [
+    { key: 'module.company-expenses.view', label: 'Company Expenses: View' },
+    { key: 'module.company-expenses.edit', label: 'Company Expenses: Edit' },
+    { key: 'module.expenses.manage-approvers', label: 'Expenses: Manage Approvers' },
+    { key: 'module.employees.manage-permissions', label: 'Employees: Manage Permissions' },
+];
+
+function parsePermissionList(value: unknown): PermissionKey[] {
+    if (!value) return [];
+    const permissions = String(value)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    return permissions.filter((item): item is PermissionKey => ASSIGNABLE_PERMISSIONS.some((permission) => permission.key === item));
+}
+
 export default function EmployeesPage() {
+    const { user } = useAuth();
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -47,6 +70,7 @@ export default function EmployeesPage() {
 
     const [deleting, setDeleting] = useState<string | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<Employee | null>(null);
+    const canManagePermissions = hasAnyRole(user?.roles || user?.role, ['admin']) || hasPermission(user?.permissions, 'module.employees.manage-permissions');
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,19 +95,41 @@ export default function EmployeesPage() {
         e.contactNumber?.toLowerCase().includes(search.toLowerCase())
     );
 
-    const leads = employees.filter((e) => e.role === 'lead' && e.status !== 'Left');
+    const leads = employees.filter((e) => parseRoleList(e.role).includes('lead') && e.status !== 'Left');
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        if (name === 'role') {
-            setFormData((prev) => ({ ...prev, role: value as UserRole }));
-            return;
-        }
         if (name === 'department') {
             setFormData((prev) => ({ ...prev, department: value as Department }));
             return;
         }
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const toggleRole = (role: UserRole) => {
+        setFormData((previous) => {
+            const exists = previous.roles.includes(role);
+            const nextRoles = exists
+                ? previous.roles.filter((value) => value !== role)
+                : [...previous.roles, role];
+
+            return {
+                ...previous,
+                roles: nextRoles.length > 0 ? nextRoles : ['employee'],
+            };
+        });
+    };
+
+    const togglePermission = (permission: PermissionKey) => {
+        setFormData((previous) => {
+            const exists = previous.permissions.includes(permission);
+            return {
+                ...previous,
+                permissions: exists
+                    ? previous.permissions.filter((value) => value !== permission)
+                    : [...previous.permissions, permission],
+            };
+        });
     };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,9 +162,9 @@ export default function EmployeesPage() {
             cnic: emp.cnic || '', picture: emp.picture || '', bankName: emp.bankName || '',
             bankTitle: emp.bankTitle || '', bankAccountNumber: emp.bankAccountNumber || '',
             address: emp.address || '', jobPosition: emp.jobPosition || '',
-            role: emp.role || 'employee', department: emp.department || '', leadId: emp.leadId || '',
+            roles: parseRoleList(emp.role || 'employee'), permissions: parsePermissionList(emp.permissions), department: emp.department || '', leadId: emp.leadId || '',
             status: emp.status || 'Currently Working', joiningDate: emp.joiningDate || '',
-            contactNumber: emp.contactNumber || ''
+            contactNumber: emp.contactNumber || '', startWorkingTime: emp.startWorkingTime || '09:00'
         });
         setEditingId(emp.id);
         setShowForm(true);
@@ -130,18 +176,28 @@ export default function EmployeesPage() {
         if (!formData.name.trim() || !formData.email.trim()) { 
             toast.error('Name and email are required.'); return; 
         }
-        if (formData.role === 'lead' && !formData.department) {
+        if (formData.roles.includes('lead') && !formData.department) {
             toast.error('Department is required for lead role.');
+            return;
+        }
+        if (formData.roles.length === 0) {
+            toast.error('At least one role is required.');
             return;
         }
         setSaving(true);
         try {
+            const payload = {
+                ...formData,
+                role: formData.roles.join(','),
+                permissions: formData.permissions.join(','),
+            };
+
             if (editingId) {
-                const updated = await updateEmployee(editingId, formData);
+                const updated = await updateEmployee(editingId, payload);
                 setEmployees(prev => prev.map(emp => emp.id === editingId ? { ...emp, ...updated } : emp));
                 toast.success('Employee updated.');
             } else {
-                const emp = await addEmployee(formData);
+                const emp = await addEmployee(payload);
                 setEmployees(prev => [...prev, emp]);
                 toast.success('Employee added.');
             }
@@ -266,20 +322,29 @@ export default function EmployeesPage() {
                                         <input className="input" name="jobPosition" placeholder="Software Engineer" value={formData.jobPosition} onChange={handleInputChange} />
                                     </div>
                                     <div>
-                                        <label className="label">Role</label>
-                                        <select className="input" name="role" value={formData.role} onChange={handleInputChange}>
-                                            <option value="employee">Employee</option>
-                                            <option value="lead">Lead</option>
-                                            <option value="manager">Manager</option>
-                                            <option value="hr">HR</option>
-                                            <option value="higher-management">Higher Management</option>
-                                        </select>
+                                        <label className="label">Roles</label>
+                                        <div className="grid grid-cols-2 gap-2 rounded-lg p-2" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)' }}>
+                                            {ASSIGNABLE_ROLES.map((role) => (
+                                                <label key={role} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-primary)' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={formData.roles.includes(role)}
+                                                        onChange={() => toggleRole(role)}
+                                                    />
+                                                    <span className="capitalize">{role}</span>
+                                                </label>
+                                            ))}
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="label">Joining Date</label>
                                         <input type="date" className="input" name="joiningDate" value={formData.joiningDate} onChange={handleInputChange} />
                                     </div>
-                                    {formData.role === 'lead' && (
+                                    <div>
+                                        <label className="label">Start Working Time</label>
+                                        <input type="time" className="input" name="startWorkingTime" value={formData.startWorkingTime} onChange={handleInputChange} />
+                                    </div>
+                                    {formData.roles.includes('lead') && (
                                         <div>
                                             <label className="label">Department</label>
                                             <select className="input" name="department" value={formData.department} onChange={handleInputChange} required>
@@ -291,7 +356,7 @@ export default function EmployeesPage() {
                                             </select>
                                         </div>
                                     )}
-                                    {formData.role !== 'lead' && formData.role !== 'higher-management' && formData.role !== 'hr' && (
+                                    {!formData.roles.includes('lead') && !formData.roles.includes('admin') && !formData.roles.includes('hr') && !formData.roles.includes('manager') && (
                                         <div>
                                             <label className="label">Reporting Lead</label>
                                             <select className="input" name="leadId" value={formData.leadId} onChange={handleInputChange}>
@@ -302,6 +367,27 @@ export default function EmployeesPage() {
                                             </select>
                                         </div>
                                     )}
+                                    <div className="sm:col-span-2 md:col-span-4">
+                                        <label className="label">Module Permissions</label>
+                                        <div className="grid sm:grid-cols-2 gap-2 rounded-lg p-3" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)' }}>
+                                            {ASSIGNABLE_PERMISSIONS.map((permission) => (
+                                                <label key={permission.key} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-primary)' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={formData.permissions.includes(permission.key)}
+                                                        onChange={() => togglePermission(permission.key)}
+                                                        disabled={!canManagePermissions}
+                                                    />
+                                                    <span>{permission.label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        {!canManagePermissions ? (
+                                            <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
+                                                Only admin users can grant module permissions.
+                                            </p>
+                                        ) : null}
+                                    </div>
                                     <div className="sm:col-span-2 md:col-span-4">
                                         <label className="label">Status</label>
                                         <select className="input" name="status" value={formData.status} onChange={handleInputChange}>
@@ -382,7 +468,7 @@ export default function EmployeesPage() {
                                                 </div>
                                             </td>
                                             <td style={{ color: 'var(--text-secondary)' }}>
-                                                {(emp.role || 'employee').toUpperCase()} {emp.department ? `(${emp.department})` : ''}
+                                                {parseRoleList(emp.role || 'employee').map((role) => role.toUpperCase()).join(', ')} {emp.department ? `(${emp.department})` : ''}
                                             </td>
                                             <td style={{ color: 'var(--text-secondary)' }}>
                                                 {emp.contactNumber || '—'}

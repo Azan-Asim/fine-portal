@@ -34,10 +34,10 @@ export default function SimpleBarChart({ title, subtitle, items, emptyText = 'No
                         {emptyText}
                     </p>
                 ) : (
-                    items.map((item) => {
+                    items.map((item, index) => {
                         const width = maxValue > 0 ? Math.max(6, (Math.abs(item.value) / maxValue) * 100) : 6;
                         return (
-                            <div key={item.label} className="space-y-1.5">
+                            <div key={`${item.label}-${index}`} className="space-y-1.5">
                                 <div className="flex items-center justify-between gap-3 text-sm">
                                     <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{item.label}</span>
                                     <span style={{ color: 'var(--text-secondary)' }}>{item.hint || item.value.toLocaleString('en-PK')}</span>

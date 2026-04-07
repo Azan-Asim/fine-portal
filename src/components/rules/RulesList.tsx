@@ -13,7 +13,7 @@ interface RulesListProps {
 
 function getRoleLabel(role: RuleItem['targetRole']) {
     if (role === 'all') return 'All Roles';
-    if (role === 'higher-management') return 'Higher Management';
+    if (role === 'admin') return 'Admin';
     if (role === 'hr') return 'HR';
     if (role === 'manager') return 'Manager';
     if (role === 'lead') return 'Lead';
@@ -28,7 +28,7 @@ export default function RulesList({ rules, canManage, currentRole, onEdit, onDel
                     <FileText size={42} className="mx-auto mb-3" style={{ color: 'var(--text-secondary)' }} />
                     <p className="font-medium">No rules available yet.</p>
                     <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                        HR or higher management can add the first rule from the rules page.
+                        HR or admin can add the first rule from the rules page.
                     </p>
                 </div>
             ) : (

@@ -1,12 +1,13 @@
 import { AuthUser, ProjectDocument, ProjectItem } from '@/types';
+import { hasAnyRole } from '@/lib/roleAccess';
 
 function hasGlobalVisibility(role?: AuthUser['role']): boolean {
-    return role === 'hr' || role === 'higher-management' || role === 'manager';
+    return hasAnyRole(role, ['hr', 'admin', 'manager']);
 }
 
 export function canManageDocumentAccess(user: AuthUser | null): boolean {
     if (!user) return false;
-    return user.role === 'hr' || user.role === 'higher-management';
+    return hasAnyRole(user.roles, ['hr', 'admin']);
 }
 
 export function canUploadDocumentInProject(user: AuthUser | null, project: ProjectItem): boolean {

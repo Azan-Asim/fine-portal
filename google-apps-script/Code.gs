@@ -2,7 +2,7 @@
  * Devsinn Team Management Portal - Google Apps Script
  * Deploy as a Web App (Execute as: Me, Access: Anyone)
  * 
- * Sheet names: "Employees", "Penalties", "Penalty Expenses", "Company Expenses", "Company Income", "Payroll Letters", "Attendance", "Performance Records", "Salary Slips", "Projects"
+ * Sheet names: "Employees", "Penalties", "Penalty Expenses", "Company Expenses", "Company Income", "Company Assets", "Payroll Letters", "Attendance", "Performance Records", "Salary Slips", "Projects", "Daily Work Reports", "Daily Attendance Summary", "Monthly Payroll Data"
  * Requests support GET (?action=xxx&payload=JSON) and POST JSON body ({ action, payload })
  */
 
@@ -12,12 +12,16 @@ const PENALTIES_SHEET = 'Penalties';
 const PENALTY_EXPENSES_SHEET = 'Penalty Expenses';
 const COMPANY_EXPENSES_SHEET = 'Company Expenses';
 const COMPANY_INCOME_SHEET = 'Company Income';
+const COMPANY_ASSETS_SHEET = 'Company Assets';
 const PAYROLL_SHEET = 'Payroll Letters';
 const ATTENDANCE_SHEET = 'Attendance';
 const PERFORMANCE_SHEET = 'Performance Records';
 const SALARY_SLIPS_SHEET = 'Salary Slips';
 const PROJECTS_SHEET = 'Projects';
 const RULES_SHEET = 'Rules';
+const DAILY_WORK_REPORTS_SHEET = 'Daily Work Reports';
+const DAILY_ATTENDANCE_SUMMARY_SHEET = 'Daily Attendance Summary';
+const MONTHLY_PAYROLL_DATA_SHEET = 'Monthly Payroll Data';
 const PROJECT_FOLDER_PROPERTY_KEY = 'PROJECT_DOCS_ROOT_FOLDER_ID';
 
 function respond(data) {
@@ -56,12 +60,19 @@ function doGet(e) {
     // Company Expenses
     if (action === 'getCompanyExpenses') return respond(getCompanyExpenses());
     if (action === 'addCompanyExpense') return respond(addCompanyExpense(payload));
+    if (action === 'updateCompanyExpense') return respond(updateCompanyExpense(payload.id, payload.updates));
     if (action === 'deleteCompanyExpense') return respond(deleteCompanyExpense(payload.id));
     
     // Company Income
     if (action === 'getCompanyIncomes') return respond(getCompanyIncomes());
     if (action === 'addCompanyIncome') return respond(addCompanyIncome(payload));
     if (action === 'deleteCompanyIncome') return respond(deleteCompanyIncome(payload.id));
+
+    // Company Assets
+    if (action === 'getCompanyAssets') return respond(getCompanyAssets());
+    if (action === 'addCompanyAsset') return respond(addCompanyAsset(payload));
+    if (action === 'updateCompanyAsset') return respond(updateCompanyAsset(payload.id, payload.updates));
+    if (action === 'deleteCompanyAsset') return respond(deleteCompanyAsset(payload.id));
 
     // Payroll
     if (action === 'getPayrollRecords') return respond(getPayrollRecords());
@@ -98,6 +109,16 @@ function doGet(e) {
     if (action === 'updateRule') return respond(updateRule(payload.id, payload.updates));
     if (action === 'deleteRule') return respond(deleteRule(payload.id));
 
+    // Daily Work Reports & Attendance System
+    if (action === 'submitDailyWorkReport') return respond(submitDailyWorkReport(payload));
+    if (action === 'getDailyWorkSubmissions') return respond(getDailyWorkSubmissions());
+    if (action === 'getDailyAttendanceSummariesByDate') return respond(getDailyAttendanceSummariesByDate(payload.date));
+    if (action === 'getDailyAttendanceSummaries') return respond(getDailyAttendanceSummaries(payload.startDate, payload.endDate));
+    if (action === 'getMonthlyPayrollData') return respond(getMonthlyPayrollData(payload.employeeId, payload.month, payload.year));
+    if (action === 'getAllMonthlyPayrollData') return respond(getAllMonthlyPayrollData(payload.month, payload.year));
+    if (action === 'generateMonthlyPayroll') return respond(generateMonthlyPayroll(payload.month, payload.year));
+    if (action === 'updatePayrollStatus') return respond(updatePayrollStatus(payload.payrollId, payload.status));
+
     return respondError('Unknown action: ' + action);
   } catch (err) {
     return respondError(err.message);
@@ -121,7 +142,7 @@ function getSheet(name) {
   if (!sheet) {
     sheet = SS.insertSheet(name);
     if (name === EMPLOYEES_SHEET) {
-      sheet.appendRow(['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Created At']);
+      sheet.appendRow(['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Permissions', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Start Working Time', 'Created At']);
     } else if (name === PENALTIES_SHEET) {
       sheet.appendRow(['ID', 'Employee ID', 'Employee Name', 'Email', 'Reason',
         'Reference URL', 'Amount', 'Date', 'Status', 'Payment Proof',
@@ -132,6 +153,8 @@ function getSheet(name) {
       sheet.appendRow(['ID', 'Date', 'Description', 'Amount', 'Paid By', 'Approved By', 'Payment Method', 'Receipt URL', 'Notes', 'Created At']);
     } else if (name === COMPANY_INCOME_SHEET) {
       sheet.appendRow(['ID', 'Date', 'Description', 'Amount', 'Received By', 'Receipt URL', 'Notes', 'Created At']);
+    } else if (name === COMPANY_ASSETS_SHEET) {
+      sheet.appendRow(['ID', 'Asset Name', 'Allocated Resource ID', 'Allocated Resource Name', 'Allocated Resource Role', 'Issuance Date', 'Return Date', 'Condition at Issuance', 'Notes', 'Created At', 'Updated At']);
     } else if (name === PAYROLL_SHEET) {
       sheet.appendRow(['ID', 'Payroll Date', 'Cheque No', 'Salary Month', 'Salary Year', 'Prepared By', 'Designation', 'Total', 'Line Items JSON', 'Payroll PDF HTML', 'Cheque Proof URL', 'Salary Received', 'Salary Received At', 'Created At']);
     } else if (name === ATTENDANCE_SHEET) {
@@ -144,11 +167,23 @@ function getSheet(name) {
       sheet.appendRow(['Project ID', 'Project Name', 'Description', 'Allowed Departments', 'Sheet Name', 'Sheet Link', 'Drive Folder ID', 'Created At']);
     } else if (name === RULES_SHEET) {
       sheet.appendRow(['ID', 'Target Role', 'Title', 'Content', 'Active', 'Sort Order', 'Created By', 'Created By Name', 'Updated By', 'Updated By Name', 'Created At', 'Updated At']);
+    } else if (name === DAILY_WORK_REPORTS_SHEET) {
+      sheet.appendRow(['ID', 'Employee ID', 'Employee Email', 'Date', 'Submission Type', 'Submission Time', 'Todays Summary', 'Yesterdays Plan', 'Tomorrows Plan', 'Challenges', 'Support Needed', 'Created At']);
+    } else if (name === DAILY_ATTENDANCE_SUMMARY_SHEET) {
+      sheet.appendRow(['ID', 'Employee ID', 'Employee Email', 'Employee Name', 'Date', 'Check-In Time', 'Check-Out Time', 'Total Working Hours', 'Is Late Check-In', 'Check-In Status', 'Status', 'Work Summary', 'Day Plan', 'Challenges And Support', 'Created At', 'Locked At']);
+    } else if (name === MONTHLY_PAYROLL_DATA_SHEET) {
+      sheet.appendRow(['ID', 'Employee ID', 'Employee Name', 'Email', 'Month', 'Year', 'Base Salary', 'Total Working Days', 'Total Present', 'Total Late Comings', 'Paid Leaves Allowed', 'Paid Leaves Used', 'Unpaid Leaves Calculated', 'Remaining Paid Leaves', 'Total Leave Deduction', 'Late Penalty Deduction', 'Other Deductions', 'Total Deductions', 'Net Pay', 'Payroll Status', 'Created At', 'Updated At', 'Approved By', 'Approved At']);
     }
   }
 
-  if (name === EMPLOYEES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 18) {
-    sheet.getRange(1, 1, 1, 18).setValues([['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Created At']]);
+  if (name === EMPLOYEES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() === 18) {
+    sheet.insertColumnAfter(12);
+  }
+  if (name === EMPLOYEES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() === 19) {
+    sheet.insertColumnAfter(18);
+  }
+  if (name === EMPLOYEES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 20) {
+    sheet.getRange(1, 1, 1, 20).setValues([['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Permissions', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Start Working Time', 'Created At']]);
   }
   if (name === PAYROLL_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 14) {
     sheet.getRange(1, 1, 1, 14).setValues([['ID', 'Payroll Date', 'Cheque No', 'Salary Month', 'Salary Year', 'Prepared By', 'Designation', 'Total', 'Line Items JSON', 'Payroll PDF HTML', 'Cheque Proof URL', 'Salary Received', 'Salary Received At', 'Created At']]);
@@ -161,6 +196,9 @@ function getSheet(name) {
   }
   if (name === PROJECTS_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 8) {
     sheet.getRange(1, 1, 1, 8).setValues([['Project ID', 'Project Name', 'Description', 'Allowed Departments', 'Sheet Name', 'Sheet Link', 'Drive Folder ID', 'Created At']]);
+  }
+  if (name === COMPANY_ASSETS_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 11) {
+    sheet.getRange(1, 1, 1, 11).setValues([['ID', 'Asset Name', 'Allocated Resource ID', 'Allocated Resource Name', 'Allocated Resource Role', 'Issuance Date', 'Return Date', 'Condition at Issuance', 'Notes', 'Created At', 'Updated At']]);
   }
   if (name === RULES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 12) {
     sheet.getRange(1, 1, 1, 12).setValues([['ID', 'Target Role', 'Title', 'Content', 'Active', 'Sort Order', 'Created By', 'Created By Name', 'Updated By', 'Updated By Name', 'Created At', 'Updated At']]);
@@ -183,7 +221,7 @@ function sheetToObjects(sheet, headers) {
   });
 }
 
-const E_HEADERS = ['id', 'name', 'email', 'fatherName', 'cnic', 'picture', 'bankName', 'bankTitle', 'bankAccountNumber', 'address', 'jobPosition', 'role', 'department', 'leadId', 'status', 'joiningDate', 'contactNumber', 'createdAt'];
+const E_HEADERS = ['id', 'name', 'email', 'fatherName', 'cnic', 'picture', 'bankName', 'bankTitle', 'bankAccountNumber', 'address', 'jobPosition', 'role', 'permissions', 'department', 'leadId', 'status', 'joiningDate', 'contactNumber', 'startWorkingTime', 'createdAt'];
 
 function getEmployees() {
   const sheet = getSheet(EMPLOYEES_SHEET);
@@ -198,16 +236,16 @@ function addEmployee(body) {
   const row = [
     id, body.name, body.email, body.fatherName || '', body.cnic || '', body.picture || '',
     body.bankName || '', body.bankTitle || '', body.bankAccountNumber || '', body.address || '',
-    body.jobPosition || '', body.role || 'employee', body.department || '', body.leadId || '', body.status || '', body.joiningDate || '', body.contactNumber || '', createdAt
+    body.jobPosition || '', body.role || 'employee', body.permissions || '', body.department || '', body.leadId || '', body.status || '', body.joiningDate || '', body.contactNumber || '', body.startWorkingTime || '09:00', createdAt
   ];
   sheet.appendRow(row);
   return { 
     id, name: body.name, email: body.email, 
     fatherName: body.fatherName || '', cnic: body.cnic || '', picture: body.picture || '',
     bankName: body.bankName || '', bankTitle: body.bankTitle || '', bankAccountNumber: body.bankAccountNumber || '',
-    address: body.address || '', jobPosition: body.jobPosition || '', role: body.role || 'employee',
+    address: body.address || '', jobPosition: body.jobPosition || '', role: body.role || 'employee', permissions: body.permissions || '',
     department: body.department || '', leadId: body.leadId || '', status: body.status || '',
-    joiningDate: body.joiningDate || '', contactNumber: body.contactNumber || '', createdAt
+    joiningDate: body.joiningDate || '', contactNumber: body.contactNumber || '', startWorkingTime: body.startWorkingTime || '09:00', createdAt
   };
 }
 
@@ -216,7 +254,7 @@ function updateEmployee(id, updates) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === id) {
-      const colMap = { id: 0, name: 1, email: 2, fatherName: 3, cnic: 4, picture: 5, bankName: 6, bankTitle: 7, bankAccountNumber: 8, address: 9, jobPosition: 10, role: 11, department: 12, leadId: 13, status: 14, joiningDate: 15, contactNumber: 16, createdAt: 17 };
+      const colMap = { id: 0, name: 1, email: 2, fatherName: 3, cnic: 4, picture: 5, bankName: 6, bankTitle: 7, bankAccountNumber: 8, address: 9, jobPosition: 10, role: 11, permissions: 12, department: 13, leadId: 14, status: 15, joiningDate: 16, contactNumber: 17, startWorkingTime: 18, createdAt: 19 };
       for (const key in updates) {
         if (colMap[key] !== undefined) {
           sheet.getRange(i + 1, colMap[key] + 1).setValue(updates[key]);
@@ -476,6 +514,95 @@ function addCompanyExpense(body) {
   };
 }
 
+function updateCompanyExpense(id, updates) {
+  if (!id) throw new Error('id is required');
+  if (!updates || typeof updates !== 'object') throw new Error('updates are required');
+
+  // Update monthly sheets first.
+  const monthlySheets = SS.getSheets().filter(function(sheet) {
+    return isCompanyExpenseMonthSheet(sheet.getName());
+  });
+
+  for (let s = 0; s < monthlySheets.length; s++) {
+    const sheet = monthlySheets[s];
+    const headerRow = getCompanyExpenseHeaderRow(sheet);
+    const firstDataRow = headerRow + 1;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < firstDataRow) continue;
+
+    const values = sheet.getRange(firstDataRow, 1, lastRow - firstDataRow + 1, Math.max(sheet.getLastColumn(), 12)).getValues();
+    for (let i = 0; i < values.length; i++) {
+      const rowNumber = firstDataRow + i;
+      const row = values[i];
+      const rowId = String(row[10] || '').trim() || (sheet.getName() + '__' + rowNumber);
+      if (rowId !== String(id)) continue;
+
+      const updated = {
+        id: rowId,
+        date: updates.date !== undefined ? updates.date : row[1],
+        description: updates.description !== undefined ? updates.description : row[2],
+        amount: updates.amount !== undefined ? Number(updates.amount) : Number(row[4] || 0),
+        paidBy: updates.paidBy !== undefined ? updates.paidBy : row[5],
+        approvedBy: updates.approvedBy !== undefined ? updates.approvedBy : row[6],
+        paymentMethod: updates.paymentMethod !== undefined ? updates.paymentMethod : row[7],
+        receiptUrl: updates.receiptUrl !== undefined ? updates.receiptUrl : row[8],
+        notes: updates.notes !== undefined ? updates.notes : row[9],
+        createdAt: String(row[11] || ''),
+      };
+
+      sheet.getRange(rowNumber, 2).setValue(updated.date);
+      sheet.getRange(rowNumber, 3).setValue(updated.description);
+      sheet.getRange(rowNumber, 5).setValue(updated.amount);
+      sheet.getRange(rowNumber, 6).setValue(updated.paidBy);
+      sheet.getRange(rowNumber, 7).setValue(updated.approvedBy);
+      sheet.getRange(rowNumber, 8).setValue(updated.paymentMethod);
+      sheet.getRange(rowNumber, 9).setValue(updated.receiptUrl);
+      sheet.getRange(rowNumber, 10).setValue(updated.notes);
+
+      return updated;
+    }
+  }
+
+  // Legacy sheet fallback.
+  const legacySheet = getSheet(COMPANY_EXPENSES_SHEET);
+  const data = legacySheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) !== String(id)) continue;
+
+    const colMap = {
+      date: 1,
+      description: 2,
+      amount: 3,
+      paidBy: 4,
+      approvedBy: 5,
+      paymentMethod: 6,
+      receiptUrl: 7,
+      notes: 8,
+    };
+
+    for (const key in updates) {
+      if (colMap[key] === undefined) continue;
+      legacySheet.getRange(i + 1, colMap[key] + 1).setValue(updates[key]);
+      data[i][colMap[key]] = updates[key];
+    }
+
+    return {
+      id: String(data[i][0] || ''),
+      date: String(data[i][1] || ''),
+      description: String(data[i][2] || ''),
+      amount: Number(data[i][3] || 0),
+      paidBy: String(data[i][4] || ''),
+      approvedBy: String(data[i][5] || ''),
+      paymentMethod: String(data[i][6] || ''),
+      receiptUrl: String(data[i][7] || ''),
+      notes: String(data[i][8] || ''),
+      createdAt: String(data[i][9] || ''),
+    };
+  }
+
+  throw new Error('Company expense not found: ' + id);
+}
+
 function deleteCompanyExpense(id) {
   if (!id) throw new Error('id is required');
 
@@ -548,6 +675,173 @@ function deleteCompanyIncome(id) {
     if (String(data[i][0]) === id) { sheet.deleteRow(i + 1); break; }
   }
   return null;
+}
+
+// ============ COMPANY ASSETS ============
+
+const CA_HEADERS = ['id', 'assetName', 'allocatedResourceId', 'allocatedResourceName', 'allocatedResourceRole', 'issuanceDate', 'returnDate', 'conditionAtIssuance', 'notes', 'createdAt', 'updatedAt'];
+
+function parseCompanyAssetRow(row) {
+  return {
+    id: String(row[0] || ''),
+    assetName: String(row[1] || ''),
+    allocatedResourceId: String(row[2] || ''),
+    allocatedResourceName: String(row[3] || ''),
+    allocatedResourceRole: String(row[4] || ''),
+    issuanceDate: String(row[5] || ''),
+    returnDate: String(row[6] || ''),
+    conditionAtIssuance: String(row[7] || ''),
+    notes: String(row[8] || ''),
+    createdAt: String(row[9] || ''),
+    updatedAt: String(row[10] || ''),
+  };
+}
+
+function getEmployeeAllocationById(employeeId) {
+  if (!employeeId) {
+    return { id: '', name: 'None', role: '' };
+  }
+
+  const sheet = getSheet(EMPLOYEES_SHEET);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(employeeId)) {
+      return {
+        id: String(employeeId),
+        name: String(data[i][1] || ''),
+        role: String(data[i][11] || ''),
+      };
+    }
+  }
+
+  return { id: String(employeeId), name: 'None', role: '' };
+}
+
+function normalizeAssetAllocation(allocatedResourceId, allocatedResourceName, allocatedResourceRole) {
+  const id = String(allocatedResourceId || '').trim();
+  if (!id || id.toLowerCase() === 'none') {
+    return {
+      allocatedResourceId: '',
+      allocatedResourceName: 'None',
+      allocatedResourceRole: '',
+    };
+  }
+
+  const employee = getEmployeeAllocationById(id);
+  return {
+    allocatedResourceId: id,
+    allocatedResourceName: String(employee.name || allocatedResourceName || '').trim() || 'None',
+    allocatedResourceRole: String(employee.role || allocatedResourceRole || '').trim(),
+  };
+}
+
+function getCompanyAssets() {
+  const sheet = getSheet(COMPANY_ASSETS_SHEET);
+  const rows = sheetToObjects(sheet, CA_HEADERS);
+  return rows.map((row) => ({
+    ...row,
+    allocatedResourceId: String(row.allocatedResourceId || ''),
+    allocatedResourceName: String(row.allocatedResourceName || 'None'),
+    allocatedResourceRole: String(row.allocatedResourceRole || ''),
+  }));
+}
+
+function addCompanyAsset(body) {
+  const sheet = getSheet(COMPANY_ASSETS_SHEET);
+  const id = generateId();
+  const createdAt = new Date().toISOString();
+  const updatedAt = createdAt;
+  const allocation = normalizeAssetAllocation(body.allocatedResourceId, body.allocatedResourceName, body.allocatedResourceRole);
+
+  sheet.appendRow([
+    id,
+    String(body.assetName || '').trim(),
+    allocation.allocatedResourceId,
+    allocation.allocatedResourceName,
+    allocation.allocatedResourceRole,
+    String(body.issuanceDate || ''),
+    String(body.returnDate || ''),
+    String(body.conditionAtIssuance || ''),
+    String(body.notes || ''),
+    createdAt,
+    updatedAt,
+  ]);
+
+  return {
+    id,
+    assetName: String(body.assetName || '').trim(),
+    allocatedResourceId: allocation.allocatedResourceId,
+    allocatedResourceName: allocation.allocatedResourceName,
+    allocatedResourceRole: allocation.allocatedResourceRole,
+    issuanceDate: String(body.issuanceDate || ''),
+    returnDate: String(body.returnDate || ''),
+    conditionAtIssuance: String(body.conditionAtIssuance || ''),
+    notes: String(body.notes || ''),
+    createdAt,
+    updatedAt,
+  };
+}
+
+function updateCompanyAsset(id, updates) {
+  if (!id) throw new Error('id is required');
+
+  const sheet = getSheet(COMPANY_ASSETS_SHEET);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) !== String(id)) continue;
+
+    const existing = parseCompanyAssetRow(data[i]);
+    const merged = Object.assign({}, existing, updates || {});
+    const allocation = normalizeAssetAllocation(merged.allocatedResourceId, merged.allocatedResourceName, merged.allocatedResourceRole);
+    const nowIso = new Date().toISOString();
+
+    const nextAsset = {
+      id: existing.id,
+      assetName: String(merged.assetName || '').trim(),
+      allocatedResourceId: allocation.allocatedResourceId,
+      allocatedResourceName: allocation.allocatedResourceName,
+      allocatedResourceRole: allocation.allocatedResourceRole,
+      issuanceDate: String(merged.issuanceDate || ''),
+      returnDate: String(merged.returnDate || ''),
+      conditionAtIssuance: String(merged.conditionAtIssuance || ''),
+      notes: String(merged.notes || ''),
+      createdAt: existing.createdAt,
+      updatedAt: nowIso,
+    };
+
+    sheet.getRange(i + 1, 1, 1, 11).setValues([[
+      nextAsset.id,
+      nextAsset.assetName,
+      nextAsset.allocatedResourceId,
+      nextAsset.allocatedResourceName,
+      nextAsset.allocatedResourceRole,
+      nextAsset.issuanceDate,
+      nextAsset.returnDate,
+      nextAsset.conditionAtIssuance,
+      nextAsset.notes,
+      nextAsset.createdAt,
+      nextAsset.updatedAt,
+    ]]);
+
+    return nextAsset;
+  }
+
+  throw new Error('Company asset not found: ' + id);
+}
+
+function deleteCompanyAsset(id) {
+  if (!id) throw new Error('id is required');
+
+  const sheet = getSheet(COMPANY_ASSETS_SHEET);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      return null;
+    }
+  }
+
+  throw new Error('Company asset not found: ' + id);
 }
 
 // ============ PAYROLL ============
@@ -1106,8 +1400,8 @@ function upsertPerformanceRecord(body) {
   if (hasFinalInput) {
     const reviewerId = body.finalReviewerId;
     const reviewerRole = getEmployeeRoleById(reviewerId);
-    if (reviewerRole !== 'hr' && reviewerRole !== 'higher-management') {
-      throw new Error('Only HR or Higher Management can add final performance review and score.');
+    if (reviewerRole !== 'hr' && reviewerRole !== 'admin' && reviewerRole !== 'higher-management') {
+      throw new Error('Only HR or Admin can add final performance review and score.');
     }
   }
 
@@ -1765,8 +2059,9 @@ function updateProjectDocumentAccess(payload) {
 const RULE_HEADERS = ['id', 'targetRole', 'title', 'content', 'active', 'sortOrder', 'createdBy', 'createdByName', 'updatedBy', 'updatedByName', 'createdAt', 'updatedAt'];
 
 function normalizeRuleTargetRole(role) {
-  const value = String(role || 'all');
-  const allowed = ['all', 'employee', 'lead', 'manager', 'hr', 'higher-management'];
+  const raw = String(role || 'all');
+  const value = raw === 'higher-management' ? 'admin' : raw;
+  const allowed = ['all', 'employee', 'lead', 'manager', 'hr', 'admin'];
   return allowed.indexOf(value) === -1 ? 'all' : value;
 }
 
@@ -1917,4 +2212,562 @@ function deleteRule(id) {
   }
 
   throw new Error('Rule not found: ' + id);
+}
+
+// ============ DAILY WORK REPORTS & ATTENDANCE SYSTEM ============
+
+const DWR_HEADERS = ['id', 'employeeId', 'employeeEmail', 'date', 'submissionType', 'submissionTime', 'todaysSummary', 'yesterdaysPlan', 'tomorrowsPlan', 'challenges', 'supportNeeded', 'createdAt'];
+const DAS_HEADERS = ['id', 'employeeId', 'employeeEmail', 'employeeName', 'date', 'checkInTime', 'checkOutTime', 'totalWorkingHours', 'isLateCheckIn', 'checkInStatus', 'status', 'workSummary', 'dayPlan', 'challengesAndSupport', 'createdAt', 'lockedAt'];
+const MPD_HEADERS = ['id', 'employeeId', 'employeeName', 'email', 'month', 'year', 'baseSalary', 'totalWorkingDays', 'totalPresent', 'totalLateComings', 'paidLeavesAllowed', 'paidLeavesUsed', 'unpaidLeavesCalculated', 'remainingPaidLeaves', 'totalLeaveDeduction', 'latePenaltyDeduction', 'otherDeductions', 'totalDeductions', 'netPay', 'payrollStatus', 'createdAt', 'updatedAt', 'approvedBy', 'approvedAt'];
+
+/**
+ * Submit daily work report (check-in or check-out)
+ * When a check-out is submitted, automatically creates/updates daily attendance summary
+ */
+function submitDailyWorkReport(body) {
+  if (!body.employeeId || !body.employeeEmail || !body.date) {
+    throw new Error('employeeId, employeeEmail, and date are required');
+  }
+
+  const existingRows = getSheet(DAILY_WORK_REPORTS_SHEET).getDataRange().getValues();
+  let hasCheckIn = false;
+  let hasSameType = false;
+  for (let i = 1; i < existingRows.length; i++) {
+    const row = existingRows[i];
+    if (String(row[1]) === String(body.employeeId) && String(row[3]) === String(body.date)) {
+      if (String(row[4]) === 'Check-In') hasCheckIn = true;
+      if (String(row[4]) === String(body.submissionType)) hasSameType = true;
+    }
+  }
+
+  if (hasSameType) {
+    throw new Error(String(body.submissionType) + ' already submitted for today.');
+  }
+  if (String(body.submissionType) === 'Check-Out' && !hasCheckIn) {
+    throw new Error('Please submit Check-In first, then Check-Out.');
+  }
+
+  const sheet = getSheet(DAILY_WORK_REPORTS_SHEET);
+  const id = generateId();
+  const now = new Date().toISOString();
+  
+  const newRow = [
+    id,
+    String(body.employeeId),
+    String(body.employeeEmail).toLowerCase(),
+    String(body.date),
+    String(body.submissionType), // Check-In or Check-Out
+    String(body.submissionTime),
+    String(body.todaysSummary || ''),
+    String(body.yesterdaysPlan || ''),
+    String(body.tomorrowsPlan || ''),
+    String(body.challenges || ''),
+    String(body.supportNeeded || ''),
+    now
+  ];
+  
+  sheet.appendRow(newRow);
+  
+  const submission = {
+    id, 
+    employeeId: String(body.employeeId),
+    employeeEmail: String(body.employeeEmail).toLowerCase(),
+    date: String(body.date),
+    submissionType: String(body.submissionType),
+    submissionTime: String(body.submissionTime),
+    todaysSummary: String(body.todaysSummary || ''),
+    yesterdaysPlan: String(body.yesterdaysPlan || ''),
+    tomorrowsPlan: String(body.tomorrowsPlan || ''),
+    challenges: String(body.challenges || ''),
+    supportNeeded: String(body.supportNeeded || ''),
+    createdAt: now
+  };
+
+  // If this is a check-out, merge it with check-in and update daily attendance
+  if (body.submissionType === 'Check-Out') {
+    mergeDailySubmissions(String(body.employeeId), String(body.employeeEmail).toLowerCase(), String(body.date), String(body.submissionTime));
+  }
+
+  return submission;
+}
+
+/**
+ * Get all daily work submissions
+ */
+function getDailyWorkSubmissions() {
+  const sheet = getSheet(DAILY_WORK_REPORTS_SHEET);
+  return sheetToObjects(sheet, DWR_HEADERS);
+}
+
+/**
+ * Merge check-in and check-out submissions into daily attendance summary
+ * This is called auto-matically when a check-out is submitted
+ */
+function mergeDailySubmissions(employeeId, employeeEmail, date, checkOutTime) {
+  const submissionsSheet = getSheet(DAILY_WORK_REPORTS_SHEET);
+  const attendanceSheet = getSheet(DAILY_ATTENDANCE_SUMMARY_SHEET);
+  const employeesSheet = getSheet(EMPLOYEES_SHEET);
+  
+  // Get all submissions for this employee on this date
+  const rows = submissionsSheet.getDataRange().getValues();
+  let checkInTime = null;
+  let workSummary = '';
+  let dayPlan = '';
+  let challengesAndSupport = '';
+  
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (String(row[1]) === employeeId && String(row[3]) === date) {
+      if (String(row[4]) === 'Check-In') {
+        checkInTime = String(row[5]);
+      } else if (String(row[4]) === 'Check-Out') {
+        workSummary = String(row[6]);
+        dayPlan = String(row[7]);
+        challengesAndSupport = String(row[9]) + ' ' + String(row[10]);
+      }
+    }
+  }
+  
+  if (!checkInTime) return; // Wait for check-in before creating record
+  
+  // Find employee name
+  const empRows = employeesSheet.getDataRange().getValues();
+  let employeeName = '';
+  let startWorkingTime = '09:00';
+  for (let i = 1; i < empRows.length; i++) {
+    if (String(empRows[i][0]) === employeeId) {
+      employeeName = String(empRows[i][1]);
+      startWorkingTime = String(empRows[i][18] || '09:00');
+      break;
+    }
+  }
+  
+  // Calculate working hours
+  const checkInDate = new Date(checkInTime);
+  const checkOutDate = new Date(checkOutTime);
+  const diffMs = checkOutDate.getTime() - checkInDate.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const totalWorkingHours = Math.round(diffHours * 100) / 100; // Round to 2 decimals
+  
+  // Check if late
+  const checkInHour = checkInDate.getHours();
+  const checkInMinute = checkInDate.getMinutes();
+  const parsedStartTime = parseWorkingTime(startWorkingTime);
+  const lateThresholdMinutes = (parsedStartTime.hour * 60) + parsedStartTime.minute + 10;
+  const checkInTotalMinutes = (checkInHour * 60) + checkInMinute;
+  const isLateCheckIn = checkInTotalMinutes > lateThresholdMinutes;
+  const checkInStatus = isLateCheckIn ? 'Late' : 'On Time';
+  
+  // Check if record exists, update or create
+  const attendanceRows = attendanceSheet.getDataRange().getValues();
+  let found = false;
+  
+  for (let i = 1; i < attendanceRows.length; i++) {
+    if (String(attendanceRows[i][1]) === employeeId && String(attendanceRows[i][4]) === date) {
+      // Update existing record
+      attendanceSheet.getRange(i + 1, 6).setValue(checkInTime);
+      attendanceSheet.getRange(i + 1, 7).setValue(checkOutTime);
+      attendanceSheet.getRange(i + 1, 8).setValue(totalWorkingHours);
+      attendanceSheet.getRange(i + 1, 9).setValue(String(isLateCheckIn));
+      attendanceSheet.getRange(i + 1, 10).setValue(checkInStatus);
+      attendanceSheet.getRange(i + 1, 12).setValue(workSummary);
+      attendanceSheet.getRange(i + 1, 13).setValue(dayPlan);
+      attendanceSheet.getRange(i + 1, 14).setValue(challengesAndSupport);
+      attendanceSheet.getRange(i + 1, 16).setValue('');
+      found = true;
+      break;
+    }
+  }
+  
+  if (!found) {
+    // Create new record
+    const id = generateId();
+    const now = new Date().toISOString();
+    attendanceSheet.appendRow([
+      id,
+      employeeId,
+      employeeEmail,
+      employeeName,
+      date,
+      checkInTime,
+      checkOutTime,
+      totalWorkingHours,
+      String(isLateCheckIn),
+      checkInStatus,
+      'Open', // Status
+      workSummary,
+      dayPlan,
+      challengesAndSupport,
+      now,
+      '' // lockedAt
+    ]);
+  }
+}
+
+function parseWorkingTime(value) {
+  const parts = String(value || '').split(':');
+  const hour = Number(parts[0]);
+  const minute = Number(parts[1]);
+  if (isNaN(hour) || isNaN(minute)) {
+    return { hour: 9, minute: 0 };
+  }
+  return {
+    hour: Math.max(0, Math.min(23, hour)),
+    minute: Math.max(0, Math.min(59, minute)),
+  };
+}
+
+/**
+ * Get daily attendance summaries for a specific date
+ */
+function getDailyAttendanceSummariesByDate(date) {
+  const sheet = getSheet(DAILY_ATTENDANCE_SUMMARY_SHEET);
+  const data = sheet.getDataRange().getValues();
+  const results = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][4]) === String(date)) {
+      results.push(parseRowToDAS(data[i]));
+    }
+  }
+  
+  return results;
+}
+
+/**
+ * Get all daily attendance summaries (optionally filtered by date range)
+ */
+function getDailyAttendanceSummaries(startDate, endDate) {
+  const sheet = getSheet(DAILY_ATTENDANCE_SUMMARY_SHEET);
+  return sheetToObjects(sheet, DAS_HEADERS);
+}
+
+function parseRowToDAS(row) {
+  return {
+    id: String(row[0]),
+    employeeId: String(row[1]),
+    employeeEmail: String(row[2]),
+    employeeName: String(row[3]),
+    date: String(row[4]),
+    checkInTime: String(row[5]) || undefined,
+    checkOutTime: String(row[6]) || undefined,
+    totalWorkingHours: Number(row[7]) || 0,
+    isLateCheckIn: String(row[8]) === 'true',
+    checkInStatus: String(row[9]),
+    status: String(row[10]),
+    workSummary: String(row[11]) || undefined,
+    dayPlan: String(row[12]) || undefined,
+    challengesAndSupport: String(row[13]) || undefined,
+    createdAt: String(row[14]),
+    lockedAt: String(row[15]) || undefined
+  };
+}
+
+/**
+ * Scheduled function to lock all previous day's attendance records at midnight
+ * Run this via Apps Script trigger at 00:00 (12:00 AM) every day
+ */
+function lockPreviousDaysAttendance() {
+  const sheet = getSheet(DAILY_ATTENDANCE_SUMMARY_SHEET);
+  const data = sheet.getDataRange().getValues();
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yestdayStr = formatDateToYYYYMMDD(yesterday);
+  
+  const now = new Date().toISOString();
+  
+  for (let i = 1; i < data.length; i++) {
+    const recordDate = String(data[i][4]);
+    const currentStatus = String(data[i][10]);
+    
+    if (recordDate === yestdayStr && currentStatus === 'Open') {
+      sheet.getRange(i + 1, 11).setValue('Locked');
+      sheet.getRange(i + 1, 16).setValue(now);
+    }
+  }
+}
+
+function formatDateToYYYYMMDD(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Get monthly payroll data for one employee
+ */
+function getMonthlyPayrollData(employeeId, month, year) {
+  const sheet = getSheet(MONTHLY_PAYROLL_DATA_SHEET);
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === employeeId && 
+        Number(data[i][4]) === month && 
+        Number(data[i][5]) === year) {
+      return parseRowToMPD(data[i]);
+    }
+  }
+  
+  throw new Error(`Payroll not found for employee ${employeeId}, month ${month}/${year}`);
+}
+
+/**
+ * Get all monthly payroll data for a specific month/year
+ */
+function getAllMonthlyPayrollData(month, year) {
+  const sheet = getSheet(MONTHLY_PAYROLL_DATA_SHEET);
+  const data = sheet.getDataRange().getValues();
+  const results = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    if (Number(data[i][4]) === month && Number(data[i][5]) === year) {
+      results.push(parseRowToMPD(data[i]));
+    }
+  }
+  
+  return results;
+}
+
+function parseRowToMPD(row) {
+  return {
+    id: String(row[0]),
+    employeeId: String(row[1]),
+    employeeName: String(row[2]),
+    email: String(row[3]),
+    month: Number(row[4]),
+    year: Number(row[5]),
+    baseSalary: Number(row[6]),
+    totalWorkingDays: Number(row[7]),
+    totalPresent: Number(row[8]),
+    totalLateComings: Number(row[9]),
+    paidLeavesAllowed: Number(row[10]),
+    paidLeavesUsed: Number(row[11]),
+    unpaidLeavesCalculated: Number(row[12]),
+    remainingPaidLeaves: Number(row[13]),
+    totalLeaveDeduction: Number(row[14]),
+    latePenaltyDeduction: Number(row[15]),
+    otherDeductions: Number(row[16]),
+    totalDeductions: Number(row[17]),
+    netPay: Number(row[18]),
+    payrollStatus: String(row[19]),
+    createdAt: String(row[20]),
+    updatedAt: String(row[21]),
+    approvedBy: String(row[22]) || undefined,
+    approvedAt: String(row[23]) || undefined
+  };
+}
+
+/**
+ * Generate monthly payroll for all employees based on attendance data
+ */
+function generateMonthlyPayroll(month, year) {
+  const attendanceSheet = getSheet(DAILY_ATTENDANCE_SUMMARY_SHEET);
+  const employeesSheet = getSheet(EMPLOYEES_SHEET);
+  const payrollSheet = getSheet(MONTHLY_PAYROLL_DATA_SHEET);
+  
+  const attendanceData = attendanceSheet.getDataRange().getValues();
+  const employeesData = employeesSheet.getDataRange().getValues();
+  
+  // Build employee map
+  const employeeMap = {};
+  for (let i = 1; i < employeesData.length; i++) {
+    employeeMap[String(employeesData[i][0])] = {
+      name: String(employeesData[i][1]),
+      email: String(employeesData[i][2]),
+    };
+  }
+  
+  // Calculate attendance metrics for each employee
+  const payrollData = {};
+  const firstDayOfMonth = new Date(year, month - 1, 1);
+  const lastDayOfMonth = new Date(year, month, 0);
+  
+  for (let i = 1; i < attendanceData.length; i++) {
+    const date = String(attendanceData[i][4]); // YYYY-MM-DD
+    const [dateYear, dateMonth, dateDay] = date.split('-').map(Number);
+    
+    if (dateYear === year && dateMonth === month) {
+      const employeeId = String(attendanceData[i][1]);
+      const employeeName = String(attendanceData[i][3]);
+      const email = String(attendanceData[i][2]);
+      const isLateCheckIn = String(attendanceData[i][8]) === 'true';
+      const totalHours = Number(attendanceData[i][7]);
+      
+      if (!payrollData[employeeId]) {
+        payrollData[employeeId] = {
+          employeeId,
+          employeeName,
+          email,
+          month,
+          year,
+          totalWorkingDays: 0,
+          totalPresent: 0,
+          totalLateComings: 0,
+          totalWorkingHours: 0
+        };
+      }
+      
+      payrollData[employeeId].totalWorkingDays += 1;
+      if (totalHours > 0) {
+        payrollData[employeeId].totalPresent += 1;
+      }
+      if (isLateCheckIn) {
+        payrollData[employeeId].totalLateComings += 1;
+      }
+      payrollData[employeeId].totalWorkingHours += totalHours;
+    }
+  }
+  
+  // Create payroll records
+  const results = [];
+  for (const employeeId in payrollData) {
+    const empData = payrollData[employeeId];
+    const employee = employeeMap[employeeId] || {};
+    
+    // Get employee base salary (you can store this in employee sheet)
+    // For now, we use a default. You should fetch from employee record
+    const baseSalary = 50000; // Example, fetch this from employee record
+    
+    // Calculations
+    const paidLeavesAllowed = 1;
+    const paidLeavesUsed = 0; // Track from leave requests
+    const unpaidLeavesCalculated = Math.floor(empData.totalLateComings / 4);
+    const remainingPaidLeaves = paidLeavesAllowed - paidLeavesUsed;
+    
+    const dailySalary = baseSalary / 30;
+    const totalLeaveDeduction = (unpaidLeavesCalculated + paidLeavesUsed) * dailySalary;
+    const latePenaltyDeduction = 0; // Can be set manually
+    const otherDeductions = 0; // Can be set manually
+    const totalDeductions = totalLeaveDeduction + latePenaltyDeduction + otherDeductions;
+    const netPay = baseSalary - totalDeductions;
+    
+    const id = generateId();
+    const now = new Date().toISOString();
+    
+    const record = {
+      id,
+      employeeId,
+      employeeName: empData.employeeName,
+      email: empData.email,
+      month,
+      year,
+      baseSalary,
+      totalWorkingDays: empData.totalWorkingDays,
+      totalPresent: empData.totalPresent,
+      totalLateComings: empData.totalLateComings,
+      paidLeavesAllowed,
+      paidLeavesUsed,
+      unpaidLeavesCalculated,
+      remainingPaidLeaves,
+      totalLeaveDeduction: Math.round(totalLeaveDeduction * 100) / 100,
+      latePenaltyDeduction,
+      otherDeductions,
+      totalDeductions: Math.round(totalDeductions * 100) / 100,
+      netPay: Math.round(netPay * 100) / 100,
+      payrollStatus: 'Pending',
+      createdAt: now,
+      updatedAt: now,
+      approvedBy: '',
+      approvedAt: ''
+    };
+    
+    // Save to sheet
+    payrollSheet.appendRow([
+      record.id,
+      record.employeeId,
+      record.employeeName,
+      record.email,
+      record.month,
+      record.year,
+      record.baseSalary,
+      record.totalWorkingDays,
+      record.totalPresent,
+      record.totalLateComings,
+      record.paidLeavesAllowed,
+      record.paidLeavesUsed,
+      record.unpaidLeavesCalculated,
+      record.remainingPaidLeaves,
+      record.totalLeaveDeduction,
+      record.latePenaltyDeduction,
+      record.otherDeductions,
+      record.totalDeductions,
+      record.netPay,
+      record.payrollStatus,
+      record.createdAt,
+      record.updatedAt,
+      record.approvedBy,
+      record.approvedAt
+    ]);
+    
+    results.push(record);
+  }
+  
+  return results;
+}
+
+/**
+ * Update payroll status (Pending -> Received triggers automation)
+ * When status changes to 'Received', automatically creates a company expense
+ */
+function updatePayrollStatus(payrollId, status) {
+  if (!payrollId || !status) {
+    throw new Error('payrollId and status are required');
+  }
+
+  const sheet = getSheet(MONTHLY_PAYROLL_DATA_SHEET);
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === payrollId) {
+      const record = parseRowToMPD(data[i]);
+      const oldStatus = record.payrollStatus;
+      
+      // Update status
+      sheet.getRange(i + 1, 20).setValue(status);
+      const now = new Date().toISOString();
+      sheet.getRange(i + 1, 22).setValue(now);
+      
+      // If changing to 'Received', create company expense
+      if (oldStatus !== 'Received' && status === 'Received') {
+        createCompanyExpenseFromPayroll(record);
+      }
+      
+      record.payrollStatus = status;
+      record.updatedAt = now;
+      return record;
+    }
+  }
+  
+  throw new Error(`Payroll not found: ${payrollId}`);
+}
+
+/**
+ * Create company expense entry when payroll is received
+ * This is the automation that links payroll to expenses
+ */
+function createCompanyExpenseFromPayroll(payrollRecord) {
+  const expensesSheet = getSheet(COMPANY_EXPENSES_SHEET);
+  const id = generateId();
+  const now = new Date().toISOString();
+  const description = `Payroll - ${payrollRecord.employeeName} (${getMonthName(payrollRecord.month)}, ${payrollRecord.year})`;
+  
+  expensesSheet.appendRow([
+    id,
+    formatDateToYYYYMMDD(new Date()), // today's date
+    description,
+    payrollRecord.netPay,
+    'Payroll Department',
+    'Admin',
+    'Bank Transfer',
+    '',
+    `Generated from payroll record ${payrollRecord.id}`,
+    now
+  ]);
+}
+
+function getMonthName(month) {
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return months[month - 1] || '';
 }

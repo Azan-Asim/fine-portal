@@ -6,6 +6,7 @@ import {
     PenaltyExpense,
     CompanyExpense,
     CompanyIncome,
+    CompanyAsset,
     PayrollRecord,
     AttendanceRecord,
     AttendanceDayType,
@@ -20,6 +21,9 @@ import {
     ProjectItem,
     ProjectDocument,
     RuleItem,
+    DailyWorkSubmission,
+    DailyAttendanceSummary,
+    MonthlyPayrollData,
 } from '@/types';
 
 export interface ManagementDashboardData {
@@ -153,6 +157,10 @@ export async function addCompanyExpense(data: Omit<CompanyExpense, 'id' | 'creat
     return request<CompanyExpense>('addCompanyExpense', data);
 }
 
+export async function updateCompanyExpense(id: string, updates: Partial<CompanyExpense>): Promise<CompanyExpense> {
+    return request<CompanyExpense>('updateCompanyExpense', { id, updates });
+}
+
 export async function deleteCompanyExpense(id: string): Promise<void> {
     return request<void>('deleteCompanyExpense', { id });
 }
@@ -169,6 +177,24 @@ export async function addCompanyIncome(data: Omit<CompanyIncome, 'id' | 'created
 
 export async function deleteCompanyIncome(id: string): Promise<void> {
     return request<void>('deleteCompanyIncome', { id });
+}
+
+// ============ COMPANY ASSETS ============
+
+export async function getCompanyAssets(): Promise<CompanyAsset[]> {
+    return request<CompanyAsset[]>('getCompanyAssets');
+}
+
+export async function addCompanyAsset(data: Omit<CompanyAsset, 'id' | 'createdAt' | 'updatedAt'>): Promise<CompanyAsset> {
+    return request<CompanyAsset>('addCompanyAsset', data);
+}
+
+export async function updateCompanyAsset(id: string, updates: Partial<CompanyAsset>): Promise<CompanyAsset> {
+    return request<CompanyAsset>('updateCompanyAsset', { id, updates });
+}
+
+export async function deleteCompanyAsset(id: string): Promise<void> {
+    return request<void>('deleteCompanyAsset', { id });
 }
 
 // ============ PAYROLL ============
@@ -337,4 +363,63 @@ export async function updateProjectDocumentAccess(data: {
     accessList: string[];
 }): Promise<ProjectDocument> {
     return request<ProjectDocument>('updateProjectDocumentAccess', data);
+}
+
+// ============ DAILY WORK REPORTS & ATTENDANCE SYSTEM ============
+
+/**
+ * Submit daily work report (check-in or check-out)
+ * Automatically triggered twice a day by employees
+ */
+export async function submitDailyWorkReport(data: Omit<DailyWorkSubmission, 'id' | 'createdAt'>): Promise<DailyWorkSubmission> {
+    return request<DailyWorkSubmission>('submitDailyWorkReport', data);
+}
+
+/**
+ * Get all daily work submissions (admin/hr only)
+ */
+export async function getDailyWorkSubmissions(): Promise<DailyWorkSubmission[]> {
+    return request<DailyWorkSubmission[]>('getDailyWorkSubmissions');
+}
+
+/**
+ * Get daily attendance summary for a specific date
+ */
+export async function getDailyAttendanceSummariesByDate(date: string): Promise<DailyAttendanceSummary[]> {
+    return request<DailyAttendanceSummary[]>('getDailyAttendanceSummariesByDate', { date });
+}
+
+/**
+ * Get all daily attendance summaries for a date range
+ */
+export async function getDailyAttendanceSummaries(startDate?: string, endDate?: string): Promise<DailyAttendanceSummary[]> {
+    return request<DailyAttendanceSummary[]>('getDailyAttendanceSummaries', { startDate, endDate });
+}
+
+/**
+ * Get monthly payroll data for an employee
+ */
+export async function getMonthlyPayrollData(employeeId: string, month: number, year: number): Promise<MonthlyPayrollData> {
+    return request<MonthlyPayrollData>('getMonthlyPayrollData', { employeeId, month, year });
+}
+
+/**
+ * Get all monthly payroll data for a specific month
+ */
+export async function getAllMonthlyPayrollData(month: number, year: number): Promise<MonthlyPayrollData[]> {
+    return request<MonthlyPayrollData[]>('getAllMonthlyPayrollData', { month, year });
+}
+
+/**
+ * Create or update monthly payroll record (generates based on attendance data)
+ */
+export async function generateMonthlyPayroll(month: number, year: number): Promise<MonthlyPayrollData[]> {
+    return request<MonthlyPayrollData[]>('generateMonthlyPayroll', { month, year });
+}
+
+/**
+ * Update payroll record status (Pending -> Received -> triggers expense automation)
+ */
+export async function updatePayrollStatus(payrollId: string, status: 'Pending' | 'Received' | 'Cancelled'): Promise<MonthlyPayrollData> {
+    return request<MonthlyPayrollData>('updatePayrollStatus', { payrollId, status });
 }

@@ -2,14 +2,17 @@
 
 import { CompanyExpense } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Trash2, FileText } from 'lucide-react';
+import { Trash2, FileText, Pencil } from 'lucide-react';
 
 interface CompanyExpenseTableProps {
     expenses: CompanyExpense[];
     onDelete: (id: string) => Promise<void>;
+    onEdit?: (expense: CompanyExpense) => void;
+    canEdit?: boolean;
+    canDelete?: boolean;
 }
 
-export default function CompanyExpenseTable({ expenses, onDelete }: CompanyExpenseTableProps) {
+export default function CompanyExpenseTable({ expenses, onDelete, onEdit, canEdit = false, canDelete = true }: CompanyExpenseTableProps) {
     const handleDelete = async (id: string) => {
         if (window.confirm('Are you sure you want to delete this expense?')) {
             await onDelete(id);
@@ -72,22 +75,35 @@ export default function CompanyExpenseTable({ expenses, onDelete }: CompanyExpen
                             </td>
                             <td className="px-6 py-3 text-sm">
                                 {expense.receiptUrl ? (
-                                    <span className="text-blue-600 cursor-pointer hover:text-blue-800 flex items-center gap-1">
+                                    <a href={expense.receiptUrl} target="_blank" rel="noreferrer" className="text-blue-600 cursor-pointer hover:text-blue-800 flex items-center gap-1">
                                         <FileText size={16} />
                                         {expense.receiptUrl}
-                                    </span>
+                                    </a>
                                 ) : (
                                     <span style={{ color: 'var(--text-secondary)' }}>-</span>
                                 )}
                             </td>
                             <td className="px-6 py-3 text-center">
-                                <button
-                                    onClick={() => handleDelete(expense.id)}
-                                    className="text-red-500 hover:text-red-700 transition"
-                                    title="Delete expense"
-                                >
-                                    <Trash2 size={18} />
-                                </button>
+                                <div className="flex items-center justify-center gap-2">
+                                    {canEdit && onEdit ? (
+                                        <button
+                                            onClick={() => onEdit(expense)}
+                                            className="text-blue-500 hover:text-blue-700 transition"
+                                            title="Edit expense"
+                                        >
+                                            <Pencil size={18} />
+                                        </button>
+                                    ) : null}
+                                    {canDelete ? (
+                                        <button
+                                            onClick={() => handleDelete(expense.id)}
+                                            className="text-red-500 hover:text-red-700 transition"
+                                            title="Delete expense"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    ) : null}
+                                </div>
                             </td>
                         </tr>
                     ))}

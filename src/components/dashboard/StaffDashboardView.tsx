@@ -11,8 +11,6 @@ import {
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { AttendanceRecord, Employee, PaymentType, Penalty, PerformanceRecord, SalarySlip } from '@/types';
 import { CalendarClock, CheckCircle, CreditCard, Loader2, RefreshCw, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
 import ImageUploader from '@/components/ImageUploader';
 import toast from 'react-hot-toast';
 
@@ -201,6 +199,7 @@ export default function StaffDashboardView() {
     const subtitle = role === 'lead'
         ? 'Your work, performance, and team snapshot'
         : 'Your penalties, attendance, salary, and monthly progress';
+    const payDateValue = payDate ? payDate.toISOString().split('T')[0] : '';
 
     return (
         <div className="page-enter flex flex-col h-full">
@@ -389,7 +388,15 @@ export default function StaffDashboardView() {
                                 <label className="label">Payment Date *</label>
                                 <div className="input flex items-center gap-2">
                                     <CalendarClock size={16} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-                                    <DatePicker selected={payDate} onChange={(date: Date | null) => setPayDate(date)} dateFormat="yyyy-MM-dd" placeholderText="Select date" />
+                                    <input
+                                        type="date"
+                                        value={payDateValue}
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            setPayDate(value ? new Date(`${value}T00:00:00`) : null);
+                                        }}
+                                        className="w-full bg-transparent outline-none"
+                                    />
                                 </div>
                             </div>
 

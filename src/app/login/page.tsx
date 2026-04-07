@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ShieldCheck, Loader2 } from 'lucide-react';
-import { getHomePathByRole } from '@/lib/roleAccess';
+import { getHomePathByRoles } from '@/lib/roleAccess';
 import toast from 'react-hot-toast';
 
 declare global {
@@ -61,7 +61,7 @@ export default function LoginPage() {
                         toast.success('Welcome back!');
                         const stored = localStorage.getItem('fine_portal_user');
                         const parsed = stored ? JSON.parse(stored) : null;
-                        router.push(getHomePathByRole(parsed?.role));
+                        router.push(getHomePathByRoles(parsed?.roles || parsed?.role));
                     } else {
                         toast.error(result.error || 'Login failed.');
                     }
@@ -105,8 +105,9 @@ export default function LoginPage() {
         if (result.success) {
             toast.success('Welcome back!');
             const stored = localStorage.getItem('fine_portal_user');
+            console.log('Stored user after login:', stored);
             const parsed = stored ? JSON.parse(stored) : null;
-            router.push(getHomePathByRole(parsed?.role));
+            router.push(getHomePathByRoles(parsed?.roles || parsed?.role));
         } else {
             toast.error(result.error || 'Login failed.');
         }

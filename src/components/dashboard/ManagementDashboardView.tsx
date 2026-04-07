@@ -22,7 +22,7 @@ import {
 import { Building2, CalendarClock, DollarSign, FolderKanban, Loader2, RefreshCw, ShieldCheck, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type ManagementRole = 'higher-management' | 'hr' | 'manager';
+type ManagementRole = 'admin' | 'hr' | 'manager';
 
 interface DashboardBundle {
     employees: Employee[];
@@ -197,10 +197,10 @@ export default function ManagementDashboardView() {
         { label: 'Pending Penalties', value: bundle.penalties.filter((item) => item.status === 'Pending').length, sub: 'Awaiting verification', icon: TrendingDown, color: '#F0883E' },
     ];
 
-    const cards = role === 'higher-management' ? executiveCards : role === 'hr' ? hrCards : managerCards;
+    const cards = role === 'admin' ? executiveCards : role === 'hr' ? hrCards : managerCards;
 
-    const title = role === 'higher-management' ? 'Executive Dashboard' : role === 'hr' ? 'HR Dashboard' : 'Manager Dashboard';
-    const subtitle = role === 'higher-management'
+    const title = role === 'admin' ? 'Executive Dashboard' : role === 'hr' ? 'HR Dashboard' : 'Manager Dashboard';
+    const subtitle = role === 'admin'
         ? 'Financial control, project visibility, and monthly company health'
         : role === 'hr'
             ? 'Workforce distribution, attendance, and employee movement'
@@ -334,27 +334,27 @@ export default function ManagementDashboardView() {
                     </div>
                 ) : (
                     <>
-                        <DashboardStatGrid cards={cards} columns={role === 'higher-management' ? 6 : 6} />
+                        <DashboardStatGrid cards={cards} columns={role === 'admin' ? 6 : 6} />
 
                         <div className="grid gap-6 lg:grid-cols-2">
                             <SimpleBarChart
-                                title={role === 'higher-management' ? 'Finance Snapshot' : role === 'hr' ? 'Workforce Distribution' : 'Team Performance Snapshot'}
-                                subtitle={role === 'higher-management' ? 'Income vs expense vs payroll for the current month' : role === 'hr' ? 'Role mix across the organization' : 'Current month score leaderboard'}
-                                items={role === 'higher-management' ? financeChart : role === 'hr' ? roleChart : performanceChart}
+                                title={role === 'admin' ? 'Finance Snapshot' : role === 'hr' ? 'Workforce Distribution' : 'Team Performance Snapshot'}
+                                subtitle={role === 'admin' ? 'Income vs expense vs payroll for the current month' : role === 'hr' ? 'Role mix across the organization' : 'Current month score leaderboard'}
+                                items={role === 'admin' ? financeChart : role === 'hr' ? roleChart : performanceChart}
                                 emptyText="No records found for this view."
                             />
 
                             <SimpleBarChart
-                                title={role === 'higher-management' ? 'Project Document Coverage' : role === 'hr' ? 'Department Distribution' : 'Attendance Status'}
-                                subtitle={role === 'higher-management' ? 'Top projects by uploaded documents' : role === 'hr' ? 'Current employee mix by department' : 'Attendance status this month'}
-                                items={role === 'higher-management' ? projectChart : role === 'hr' ? departmentChart : attendanceChart}
+                                title={role === 'admin' ? 'Project Document Coverage' : role === 'hr' ? 'Department Distribution' : 'Attendance Status'}
+                                subtitle={role === 'admin' ? 'Top projects by uploaded documents' : role === 'hr' ? 'Current employee mix by department' : 'Attendance status this month'}
+                                items={role === 'admin' ? projectChart : role === 'hr' ? departmentChart : attendanceChart}
                                 emptyText="No records found for this view."
                             />
                         </div>
 
                         <div className="grid gap-6 lg:grid-cols-2">
                             {renderRecentPenaltiesTable()}
-                            {role === 'higher-management' ? renderRecentFinanceTable() : renderEmployeeTable()}
+                            {role === 'admin' ? renderRecentFinanceTable() : renderEmployeeTable()}
                         </div>
 
                         <div className="grid gap-6 lg:grid-cols-2">

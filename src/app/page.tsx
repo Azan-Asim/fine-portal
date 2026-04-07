@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { getHomePathByRole } from '@/lib/roleAccess';
+import { getHomePathByRoles } from '@/lib/roleAccess';
 
 export default function HomePage() {
   const { user, isLoading } = useAuth();
@@ -12,7 +12,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isLoading) {
       if (!user) router.push('/login');
-      else router.push(getHomePathByRole(user.role));
+      else router.push(getHomePathByRoles(user.roles));
     }
   }, [user, isLoading, router]);
 

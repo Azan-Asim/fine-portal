@@ -3,11 +3,10 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { getRules } from '@/lib/googleSheets';
-import { canBypassRulesGate } from '@/lib/roleAccess';
+import { canBypassRulesGate, parseRoleList } from '@/lib/roleAccess';
 import { RuleItem } from '@/types';
 import RulesList from '@/components/rules/RulesList';
 import { Loader2, ShieldAlert, CheckCircle2, LogOut } from 'lucide-react';
-import toast from 'react-hot-toast';
 
 interface RulesGateProps {
     children: ReactNode;
@@ -19,6 +18,7 @@ interface CachedRulesState {
 }
 
 const RULES_CACHE_KEY = 'fine_portal_rules_cache';
+const ENABLE_RULES_API = false;
 
 function getAcceptanceKey(userId: string) {
     return `fine_portal_rules_accepted:${userId}`;
@@ -72,13 +72,14 @@ function readAcceptanceVersion(userId: string) {
     }
 }
 
-function getRelevantRules(rules: RuleItem[], role?: string) {
-    if (!role) {
+function getRelevantRules(rules: RuleItem[], roles?: string | string[]) {
+    const assignedRoles = parseRoleList(roles);
+    if (assignedRoles.length === 0) {
         return [];
     }
 
     return rules
-        .filter((rule) => rule.active && (rule.targetRole === 'all' || rule.targetRole === role))
+        .filter((rule) => rule.active && (rule.targetRole === 'all' || assignedRoles.includes(rule.targetRole)))
         .sort((a, b) => {
             const orderDiff = Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
             if (orderDiff !== 0) return orderDiff;
@@ -89,14 +90,15 @@ function getRelevantRules(rules: RuleItem[], role?: string) {
 export default function RulesGate({ children }: RulesGateProps) {
     const { user, logout } = useAuth();
     const cachedRules = useMemo(() => readCachedRules(), []);
+    const assignedRoles = parseRoleList(user?.roles && user.roles.length > 0 ? user.roles : user?.role);
     const [rules, setRules] = useState<RuleItem[]>(cachedRules?.rules || []);
     const [latestUpdatedAt, setLatestUpdatedAt] = useState(cachedRules?.latestUpdatedAt || '');
-    const [loading, setLoading] = useState(() => Boolean(user && !canBypassRulesGate(user.role) && !cachedRules));
+    const [loading, setLoading] = useState(() => Boolean(user && !canBypassRulesGate(assignedRoles) && !cachedRules));
     const [accepted, setAccepted] = useState(() => {
         if (!user) return true;
-        if (canBypassRulesGate(user.role)) return true;
+        if (canBypassRulesGate(assignedRoles)) return true;
 
-        const relevant = getRelevantRules(cachedRules?.rules || [], user.role);
+        const relevant = getRelevantRules(cachedRules?.rules || [], assignedRoles);
         if (relevant.length === 0) return true;
 
         return readAcceptanceVersion(user.id) === (cachedRules?.latestUpdatedAt || '');
@@ -104,11 +106,12 @@ export default function RulesGate({ children }: RulesGateProps) {
 
     const relevantRules = useMemo(() => {
         if (!user) return [];
-        return getRelevantRules(rules, user.role);
-    }, [rules, user]);
+        return getRelevantRules(rules, assignedRoles);
+    }, [rules, user, assignedRoles]);
 
     useEffect(() => {
         let cancelled = false;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
         const load = async () => {
             if (!user) {
@@ -117,22 +120,42 @@ export default function RulesGate({ children }: RulesGateProps) {
                 return;
             }
 
-            if (canBypassRulesGate(user.role)) {
+            if (!ENABLE_RULES_API) {
+                setLoading(false);
+                setAccepted(true);
+                return;
+            }
+
+            if (canBypassRulesGate(assignedRoles)) {
                 setLoading(false);
                 setAccepted(true);
                 return;
             }
 
             setLoading(true);
+            timeoutId = setTimeout(() => {
+                if (!cancelled) {
+                    // Fail-safe: do not block portal forever if rules API is slow/unavailable.
+                    setLoading(false);
+                    setAccepted(true);
+                    console.warn('Rules service timeout. Continuing without blocking access.');
+                }
+            }, 8000);
+
             try {
                 const response = await getRules();
                 if (cancelled) return;
+
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
 
                 setRules(response.rules);
                 setLatestUpdatedAt(response.latestUpdatedAt || '');
                 saveCachedRules({ rules: response.rules, latestUpdatedAt: response.latestUpdatedAt || '' });
 
-                const nextRelevantRules = getRelevantRules(response.rules, user.role);
+                const nextRelevantRules = getRelevantRules(response.rules, assignedRoles);
 
                 if (nextRelevantRules.length === 0) {
                     setAccepted(true);
@@ -141,9 +164,14 @@ export default function RulesGate({ children }: RulesGateProps) {
 
                 setAccepted(readAcceptanceVersion(user.id) === (response.latestUpdatedAt || ''));
             } catch (error) {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
                 const message = error instanceof Error ? error.message : 'Failed to load rules.';
-                toast.error(message);
-                setAccepted(false);
+                console.warn(message);
+                // Fail-open to avoid locking users on a loading screen when rules endpoint fails.
+                setAccepted(true);
             } finally {
                 if (!cancelled) {
                     setLoading(false);
@@ -155,8 +183,11 @@ export default function RulesGate({ children }: RulesGateProps) {
 
         return () => {
             cancelled = true;
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
         };
-    }, [user]);
+    }, [user, assignedRoles]);
 
     const handleAccept = () => {
         if (!user) return;
@@ -198,7 +229,7 @@ export default function RulesGate({ children }: RulesGateProps) {
 
                     <div className="mb-5 rounded-lg p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                            Your access is paused until you accept the active rules for your role. Higher management can enter without this step.
+                            Your access is paused until you accept the active rules for your role. Admin can enter without this step.
                         </p>
                     </div>
 

@@ -11,13 +11,16 @@ import CompanyIncomeForm from '@/components/CompanyIncomeForm';
 import CompanyIncomeTable from '@/components/CompanyIncomeTable';
 import CompanyFinanceReport from '@/components/CompanyFinanceReport';
 import { PenaltyExpense, CompanyExpense, CompanyIncome, Penalty, Employee, AuthorizedApproverConfig } from '@/types';
-import { getPenalties, getPenaltyExpenses, getCompanyExpenses, getCompanyIncomes, addPenaltyExpense, addCompanyExpense, addCompanyIncome, deletePenaltyExpense, deleteCompanyExpense, deleteCompanyIncome, getEmployees } from '@/lib/googleSheets';
+import { getPenalties, getPenaltyExpenses, getCompanyExpenses, getCompanyIncomes, addPenaltyExpense, addCompanyExpense, addCompanyIncome, deletePenaltyExpense, deleteCompanyExpense, deleteCompanyIncome, getEmployees, updateCompanyExpense } from '@/lib/googleSheets';
 import { Plus, DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuth } from '@/context/AuthContext';
+import { hasAnyRole, hasPermission, parseRoleList } from '@/lib/roleAccess';
 
 type TabType = 'penalty-expenses' | 'company-expenses' | 'company-income' | 'reports';
 
 export default function ExpensesPage() {
+    const { user } = useAuth();
     const APPROVER_STORAGE_KEY = 'authorizedApproverConfig';
     const COMPANY_EXPENSES_PAGE_SIZE = 30;
 
@@ -36,12 +39,19 @@ export default function ExpensesPage() {
     const [showPenaltyExpenseForm, setShowPenaltyExpenseForm] = useState(false);
     const [showCompanyExpenseForm, setShowCompanyExpenseForm] = useState(false);
     const [showCompanyIncomeForm, setShowCompanyIncomeForm] = useState(false);
+    const [editingCompanyExpense, setEditingCompanyExpense] = useState<CompanyExpense | null>(null);
 
     const [companyExpenseQuery, setCompanyExpenseQuery] = useState('');
     const [companyExpenseMonth, setCompanyExpenseMonth] = useState('all');
     const [companyExpensePaidBy, setCompanyExpensePaidBy] = useState('all');
     const [companyExpenseApprovedBy, setCompanyExpenseApprovedBy] = useState('all');
     const [companyExpensePage, setCompanyExpensePage] = useState(1);
+
+    const assignedRoles = parseRoleList(user?.roles && user.roles.length > 0 ? user.roles : user?.role);
+    const isAdminLike = hasAnyRole(assignedRoles, ['admin', 'hr', 'manager']);
+    const canViewCompanyExpenses = isAdminLike || hasPermission(user?.permissions, 'module.company-expenses.view');
+    const canEditCompanyExpenses = isAdminLike || hasPermission(user?.permissions, 'module.company-expenses.edit');
+    const canManageApprovers = hasAnyRole(assignedRoles, ['admin']) || hasPermission(user?.permissions, 'module.expenses.manage-approvers');
 
     // Load data from Google Sheets
     const loadData = useCallback(async () => {
@@ -128,6 +138,10 @@ export default function ExpensesPage() {
 
     // Handlers for Company Expenses
     const handleAddCompanyExpense = async (expense: Omit<CompanyExpense, 'id' | 'createdAt'>) => {
+        if (!canEditCompanyExpenses) {
+            toast.error('You do not have permission to add company expenses.');
+            return;
+        }
         try {
             const newExpense = await addCompanyExpense(expense);
             setCompanyExpenses(prev => [newExpense, ...prev]);
@@ -137,6 +151,10 @@ export default function ExpensesPage() {
     };
 
     const handleDeleteCompanyExpense = async (id: string) => {
+        if (!canEditCompanyExpenses) {
+            toast.error('You do not have permission to delete company expenses.');
+            return;
+        }
         try {
             await deleteCompanyExpense(id);
             setCompanyExpenses(prev => prev.filter(e => e.id !== id));
@@ -144,6 +162,18 @@ export default function ExpensesPage() {
         } catch (error) {
             toast.error('Failed to delete expense');
         }
+    };
+
+    const handleUpdateCompanyExpense = async (expense: Omit<CompanyExpense, 'id' | 'createdAt'>) => {
+        if (!editingCompanyExpense) return;
+        if (!canEditCompanyExpenses) {
+            toast.error('You do not have permission to edit company expenses.');
+            return;
+        }
+
+        const updated = await updateCompanyExpense(editingCompanyExpense.id, expense);
+        setCompanyExpenses((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
+        setEditingCompanyExpense(null);
     };
 
     // Handlers for Company Income
@@ -265,6 +295,7 @@ export default function ExpensesPage() {
                                             type="checkbox"
                                             checked={approverConfig.companyExpenseApproverIds.includes(emp.id)}
                                             onChange={() => toggleApprover('company', emp.id)}
+                                            disabled={!canManageApprovers}
                                         />
                                         <span style={{ color: 'var(--text-primary)' }}>{emp.name}</span>
                                         <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>({emp.jobPosition || 'No Designation'})</span>
@@ -282,6 +313,7 @@ export default function ExpensesPage() {
                                             type="checkbox"
                                             checked={approverConfig.penaltyExpenseApproverIds.includes(emp.id)}
                                             onChange={() => toggleApprover('penalty', emp.id)}
+                                            disabled={!canManageApprovers}
                                         />
                                         <span style={{ color: 'var(--text-primary)' }}>{emp.name}</span>
                                         <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>({emp.jobPosition || 'No Designation'})</span>
@@ -415,16 +447,24 @@ export default function ExpensesPage() {
                                 <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
                                     Company Expenses
                                 </h2>
-                                <button
-                                    onClick={() => setShowCompanyExpenseForm(true)}
-                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                                >
-                                    <Plus size={20} />
-                                    Add Expense
-                                </button>
+                                {canEditCompanyExpenses ? (
+                                    <button
+                                        onClick={() => setShowCompanyExpenseForm(true)}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                                    >
+                                        <Plus size={20} />
+                                        Add Expense
+                                    </button>
+                                ) : null}
                             </div>
 
                             <div className="rounded-lg p-6" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                                {!canViewCompanyExpenses ? (
+                                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                        You do not have permission to view company expenses.
+                                    </p>
+                                ) : (
+                                    <>
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
                                     <input
                                         className="input"
@@ -467,6 +507,9 @@ export default function ExpensesPage() {
                                 <CompanyExpenseTable
                                     expenses={paginatedCompanyExpenses}
                                     onDelete={handleDeleteCompanyExpense}
+                                    canEdit={canEditCompanyExpenses}
+                                    canDelete={canEditCompanyExpenses}
+                                    onEdit={(expense) => setEditingCompanyExpense(expense)}
                                 />
 
                                 <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -493,12 +536,23 @@ export default function ExpensesPage() {
                                         </button>
                                     </div>
                                 </div>
+                                    </>
+                                )}
                             </div>
 
                             {showCompanyExpenseForm && (
                                 <CompanyExpenseForm
                                     onSubmit={handleAddCompanyExpense}
                                     onClose={() => setShowCompanyExpenseForm(false)}
+                                    approvers={companyApprovers}
+                                />
+                            )}
+
+                            {editingCompanyExpense && (
+                                <CompanyExpenseForm
+                                    initialExpense={editingCompanyExpense}
+                                    onSubmit={handleUpdateCompanyExpense}
+                                    onClose={() => setEditingCompanyExpense(null)}
                                     approvers={companyApprovers}
                                 />
                             )}
