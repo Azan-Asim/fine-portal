@@ -6,7 +6,7 @@ import Header from '@/components/Header';
 import { addCompanyAsset, deleteCompanyAsset, getCompanyAssets, getEmployees, updateCompanyAsset } from '@/lib/googleSheets';
 import { CompanyAsset, Employee, UserRole } from '@/types';
 import { formatDate } from '@/lib/utils';
-import { Package2, Plus, Search, Pencil, Trash2, X } from 'lucide-react';
+import { Package2, Plus, Search, Pencil, Trash2, X, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface CompanyAssetsViewProps {
@@ -185,6 +185,101 @@ export default function CompanyAssetsView({ basePath, userId, userRole, canManag
         }
     };
 
+        const handleDownloadIds = () => {
+                const sourceAssets = canManage ? assets : visibleAssets;
+                const ids = sourceAssets.map((asset) => String(asset.id || '').trim()).filter(Boolean);
+
+                if (ids.length === 0) {
+                        toast.error('No asset IDs available to print.');
+                        return;
+                }
+
+                const popup = window.open('', '_blank');
+                if (!popup) {
+                        toast.error('Unable to open print window. Please allow popups for this site.');
+                        return;
+                }
+
+                const columns = 4;
+                const rows = Math.max(1, Math.ceil(ids.length / columns));
+                const fontSizePx = rows <= 8 ? 14 : rows <= 12 ? 12 : rows <= 16 ? 10 : 9;
+                const compactClass = rows > 16 ? 'compact' : '';
+                const idsHtml = ids.map((id) => `<div class="id-item">${id}</div>`).join('');
+
+                popup.document.open();
+                popup.document.write(`
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Asset IDs Print</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 10mm;
+        }
+        * { box-sizing: border-box; }
+        html, body {
+            width: 210mm;
+            height: 297mm;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #fff;
+            color: #111;
+        }
+        .sheet {
+            width: 190mm;
+            height: 277mm;
+            margin: 10mm;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 4mm;
+        }
+        .title {
+            font-size: 14px;
+            font-weight: 700;
+            text-align: center;
+        }
+        .ids-grid {
+            display: grid;
+            grid-template-columns: repeat(${columns}, 1fr);
+            grid-template-rows: repeat(${rows}, 1fr);
+            gap: 2mm;
+            overflow: hidden;
+        }
+        .ids-grid.compact {
+            gap: 1mm;
+        }
+        .id-item {
+            border: 1px solid #222;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1mm;
+            font-size: ${fontSizePx}px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="sheet">
+        <div class="title">ASSET IDS</div>
+        <div class="ids-grid ${compactClass}">${idsHtml}</div>
+    </div>
+</body>
+</html>
+                `);
+                popup.document.close();
+                popup.focus();
+                popup.print();
+        };
+
     return (
         <div className="page-enter flex flex-col h-full">
             <Header title="Company Assets" subtitle="Track company-issued assets and who is currently holding them." />
@@ -208,6 +303,9 @@ export default function CompanyAssetsView({ basePath, userId, userRole, canManag
                                 onChange={(event) => setSearch(event.target.value)}
                             />
                         </div>
+                        <button onClick={handleDownloadIds} className="btn-secondary">
+                            <Download size={16} /> Download IDs
+                        </button>
                         {canManage ? (
                             <button onClick={openAddForm} className="btn-primary">
                                 <Plus size={16} /> Add Asset

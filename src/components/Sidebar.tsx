@@ -50,18 +50,17 @@ export default function Sidebar() {
     const { user, logout, switchActiveRole } = useAuth();
     const pathname = usePathname();
     const assignedRoles = parseRoleList(user?.roles && user.roles.length > 0 ? user.roles : user?.role);
-    const hasAdminAccess = assignedRoles.some((role) => isFullAccessRole(role));
-    const hasLeadAccess = assignedRoles.includes('lead');
-    const hasEmployeeAccess = assignedRoles.some((role) => !isFullAccessRole(role) && role !== 'lead');
+    const activeRole: UserRole = user?.activeRole || assignedRoles[0] || 'employee';
+    const hasAdminAccess = isFullAccessRole(activeRole);
 
-    const links = [
-        ...(hasAdminAccess ? adminLinks : []),
-        ...(hasLeadAccess ? leadLinks : []),
-        ...(hasEmployeeAccess ? employeeLinks : []),
-    ].filter((link, index, list) => list.findIndex((item) => item.href === link.href) === index);
+    const links = hasAdminAccess
+        ? adminLinks
+        : activeRole === 'lead'
+            ? leadLinks
+            : employeeLinks;
 
     const filteredLinks = links.filter((link) => {
-        if (link.href === '/admin/employees') return canManageEmployees(assignedRoles);
+        if (link.href === '/admin/employees') return canManageEmployees(activeRole);
         return true;
     });
 
@@ -89,9 +88,9 @@ export default function Sidebar() {
                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                             {assignedRoles.length > 1
                                 ? 'Multi Role Portal'
-                                : hasAdminAccess
+                                    : hasAdminAccess
                                     ? 'Management Portal'
-                                    : canViewTeam(assignedRoles)
+                                    : canViewTeam(activeRole)
                                         ? 'Lead Portal'
                                         : 'Employee Portal'}
                         </p>

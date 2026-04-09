@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
 import { Employee, PayrollDraft, PayrollLineItem, PayrollRecord, SalarySlip } from '@/types';
-import { addPayrollRecord, addSalarySlipsForPayroll, getEmployees, getPayrollRecords, getSalarySlipsByPayroll, updatePayrollRecord } from '@/lib/googleSheets';
+import {
+    addCompanyExpense,
+    addPayrollRecord,
+    addSalarySlipsForPayroll,
+    getCompanyExpenses,
+    getEmployees,
+    getPayrollRecords,
+    getSalarySlipsByPayroll,
+    updatePayrollRecord,
+} from '@/lib/googleSheets';
 import { Plus, FileText, Trash2, CheckCircle2, Image as ImageIcon, Download } from 'lucide-react';
 import { generatePayrollLetterPdf } from '@/lib/payrollPdf';
 import { uploadImage } from '@/lib/uploadImage';
@@ -102,12 +111,33 @@ export default function PayrollPage() {
         if (!ok) return;
         setActionLoadingId(record.id);
         try {
+            const payrollExpenseMarker = `Payroll ID: ${record.id}`;
+            const existingExpenses = await getCompanyExpenses();
+            const hasExistingPayrollExpense = existingExpenses.some((expense) =>
+                String(expense.description || '').includes(payrollExpenseMarker) ||
+                String(expense.notes || '').includes(payrollExpenseMarker)
+            );
+
+            if (!hasExistingPayrollExpense) {
+                const nowDate = new Date().toISOString().slice(0, 10);
+                await addCompanyExpense({
+                    date: nowDate,
+                    description: `Salary Disbursement - ${record.salaryMonth} ${record.salaryYear} (${payrollExpenseMarker})`,
+                    amount: Number(record.total || 0),
+                    paidBy: record.preparedBy || 'Payroll',
+                    approvedBy: record.preparedBy || 'Payroll',
+                    paymentMethod: 'Bank Transfer',
+                    receiptUrl: record.chequeProofUrl || '',
+                    notes: 'Auto-created from payroll delivery confirmation.',
+                });
+            }
+
             const updated = await updatePayrollRecord(record.id, {
                 salaryReceived: true,
                 salaryReceivedAt: new Date().toISOString(),
             });
             setPayrollHistory((prev) => prev.map((p) => (p.id === record.id ? updated : p)));
-            toast.success('Salary is successfully delivered to employees account.');
+            toast.success('Salary delivered and finance expense record created.');
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Failed to update salary delivery status.';
             toast.error(message);

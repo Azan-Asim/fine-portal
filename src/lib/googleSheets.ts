@@ -24,6 +24,9 @@ import {
     DailyWorkSubmission,
     DailyAttendanceSummary,
     MonthlyPayrollData,
+    AttendancePolicyConfig,
+    AttendanceTodayTracker,
+    MonthlyAttendancePerformanceRow,
 } from '@/types';
 
 export interface ManagementDashboardData {
@@ -44,11 +47,41 @@ export interface StaffDashboardData {
     salarySlips: SalarySlip[];
     monthlyAttendance: EmployeeMonthlyAttendanceSummary;
     currentPerformance: PerformanceRecord | null;
-    attendanceRecords: AttendanceRecord[];
-    performanceRecords: PerformanceRecord[];
+}
+
+const READ_CACHE_TTL_MS = 20_000;
+const readResponseCache = new Map<string, { expiresAt: number; data: unknown }>();
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
+function isReadAction(action: string) {
+    return action.startsWith('get');
+}
+
+function getRequestCacheKey(action: string, data?: object) {
+    return `${action}:${JSON.stringify(data ?? null)}`;
+}
+
+function clearReadCache() {
+    readResponseCache.clear();
 }
 
 async function request<T>(action: string, data?: object): Promise<T> {
+    const cacheKey = getRequestCacheKey(action, data);
+    const readAction = isReadAction(action);
+
+    if (readAction) {
+        const cached = readResponseCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+            return cached.data as T;
+        }
+
+        const inFlight = inFlightRequests.get(cacheKey);
+        if (inFlight) {
+            return (await inFlight) as T;
+        }
+    }
+
+    const networkRequest = (async () => {
     const res = await fetch('/api/google-sheets', {
         method: 'POST',
         headers: {
@@ -71,7 +104,31 @@ async function request<T>(action: string, data?: object): Promise<T> {
         throw new Error('Invalid JSON response from API');
     }
     if (json.error) throw new Error(json.error);
-    return json.data as T;
+
+        const responseData = json.data as T;
+        if (readAction) {
+            readResponseCache.set(cacheKey, {
+                expiresAt: Date.now() + READ_CACHE_TTL_MS,
+                data: responseData,
+            });
+        } else {
+            clearReadCache();
+        }
+
+        return responseData;
+    })();
+
+    if (readAction) {
+        inFlightRequests.set(cacheKey, networkRequest);
+    }
+
+    try {
+        return await networkRequest;
+    } finally {
+        if (readAction) {
+            inFlightRequests.delete(cacheKey);
+        }
+    }
 }
 
 // ============ EMPLOYEES ============
@@ -259,7 +316,59 @@ export async function getEmployeeMonthlyAttendance(
     month: number,
     year: number
 ): Promise<EmployeeMonthlyAttendanceSummary> {
-    return request<EmployeeMonthlyAttendanceSummary>('getEmployeeMonthlyAttendance', { employeeId, month, year });
+    const summary = await request<EmployeeMonthlyAttendanceSummary>('getEmployeeMonthlyAttendance', { employeeId, month, year });
+
+    const monthPadded = String(month).padStart(2, '0');
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const startDate = `${year}-${monthPadded}-01`;
+    const endDate = `${year}-${monthPadded}-${String(daysInMonth).padStart(2, '0')}`;
+
+    let dailySummaries: DailyAttendanceSummary[] = [];
+    try {
+        dailySummaries = await request<DailyAttendanceSummary[]>('getDailyAttendanceSummaries', { startDate, endDate });
+    } catch {
+        return summary;
+    }
+
+    const relevantDaily = dailySummaries.filter((record) => record.employeeId === employeeId);
+    if (relevantDaily.length === 0) {
+        return summary;
+    }
+
+    const mappedDailyRecords: AttendanceRecord[] = relevantDaily.map((record) => ({
+        id: `daily-${record.id}`,
+        employeeId: record.employeeId,
+        date: record.date,
+        dayType: 'Working Day',
+        status: 'Present',
+        leaveReason: '',
+        trackingHours: Number(record.totalWorkingHours || 0),
+        workingHours: Number(record.totalWorkingHours || 0),
+        workSessions: record.checkInTime || record.checkOutTime
+            ? [{ checkIn: record.checkInTime || '', checkOut: record.checkOutTime || '' }]
+            : [],
+        breakSessions: [],
+        createdAt: record.createdAt,
+        updatedAt: record.lockedAt || record.createdAt,
+    }));
+
+    const existingByDate = new Map(summary.records.map((record) => [record.date, record]));
+    const missingMapped = mappedDailyRecords.filter((record) => !existingByDate.has(record.date));
+
+    if (missingMapped.length === 0) {
+        return summary;
+    }
+
+    const mergedRecords = [...summary.records, ...missingMapped].sort((a, b) => a.date.localeCompare(b.date));
+    const additionalHours = missingMapped.reduce((sum, record) => sum + Number(record.workingHours || 0), 0);
+
+    return {
+        ...summary,
+        records: mergedRecords,
+        totalWorkingHours: Number(summary.totalWorkingHours || 0) + additionalHours,
+        totalTrackingHours: Number(summary.totalTrackingHours || 0) + additionalHours,
+        totalPresents: Number(summary.totalPresents || 0) + missingMapped.length,
+    };
 }
 
 export async function upsertPerformanceRecord(data: {
@@ -394,6 +503,41 @@ export async function getDailyAttendanceSummariesByDate(date: string): Promise<D
  */
 export async function getDailyAttendanceSummaries(startDate?: string, endDate?: string): Promise<DailyAttendanceSummary[]> {
     return request<DailyAttendanceSummary[]>('getDailyAttendanceSummaries', { startDate, endDate });
+}
+
+/**
+ * Real-time tracker for employee current day attendance
+ */
+export async function getAttendanceTodayTracker(employeeId: string): Promise<AttendanceTodayTracker> {
+    return request<AttendanceTodayTracker>('getAttendanceTodayTracker', { employeeId });
+}
+
+/**
+ * Start a new work session for the employee
+ */
+export async function checkInAttendance(employeeId: string): Promise<AttendanceTodayTracker> {
+    return request<AttendanceTodayTracker>('checkInAttendance', { employeeId });
+}
+
+/**
+ * End the current active work session for the employee
+ */
+export async function checkOutAttendance(employeeId: string): Promise<AttendanceTodayTracker> {
+    return request<AttendanceTodayTracker>('checkOutAttendance', { employeeId });
+}
+
+/**
+ * Update attendance policy values for a specific employee
+ */
+export async function updateAttendancePolicy(employeeId: string, policy: Partial<AttendancePolicyConfig>): Promise<Employee> {
+    return request<Employee>('updateAttendancePolicy', { employeeId, policy });
+}
+
+/**
+ * Monthly attendance + performance matrix for admin/lead dashboards
+ */
+export async function getMonthlyAttendancePerformance(month: number, year: number): Promise<MonthlyAttendancePerformanceRow[]> {
+    return request<MonthlyAttendancePerformanceRow[]>('getMonthlyAttendancePerformance', { month, year });
 }
 
 /**

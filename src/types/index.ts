@@ -43,6 +43,11 @@ export interface Employee {
     joiningDate: string;
     contactNumber: string;
     startWorkingTime: string;
+    gracePeriodMinutes?: number;
+    requiredDailyWorkingHours?: number;
+    allowedLeavesPerMonth?: number;
+    autoCheckoutHours?: number;
+    timezone?: string;
     createdAt: string;
 }
 
@@ -305,6 +310,7 @@ export interface ProjectDocument {
 
 export type AttendanceSubmissionType = 'Check-In' | 'Check-Out';
 export type DailyRecordStatus = 'Open' | 'Locked';
+export type DailyPresenceStatus = 'Present' | 'Late' | 'Absent' | 'Leave' | 'Half Day' | 'Overtime';
 
 /**
  * Raw form submission - created every time employee fills the daily form
@@ -341,12 +347,69 @@ export interface DailyAttendanceSummary {
     totalWorkingHours: number; // Calculated: (checkOut - checkIn) * 24, rounded to 2 decimals
     isLateCheckIn: boolean; // true if checkIn is after 9:10 AM
     checkInStatus: 'On Time' | 'Late'; // Derived from isLateCheckIn
+    attendanceStatus?: DailyPresenceStatus; // Derived from policy + total hours
     status: DailyRecordStatus; // Open until midnight, then Locked
+    sessionCount?: number;
+    totalSessionsDurationHours?: number;
+    requiredDailyWorkingHours?: number;
+    overtimeHours?: number;
+    halfDayThresholdHours?: number;
     workSummary?: string; // merged from work submissions
     dayPlan?: string; // merged from submissions
     challengesAndSupport?: string; // merged from submissions
     createdAt: string;
     lockedAt?: string; // timestamp when record was locked at midnight
+    updatedAt?: string;
+}
+
+export interface AttendancePolicyConfig {
+    startWorkingTime: string;
+    gracePeriodMinutes: number;
+    requiredDailyWorkingHours: number;
+    allowedLeavesPerMonth: number;
+    autoCheckoutHours: number;
+    timezone: string;
+}
+
+export interface ActiveAttendanceSession {
+    sessionId: string;
+    checkInUtc: string;
+    checkInLocal: string;
+    activeDurationSeconds: number;
+}
+
+export interface AttendanceTodayTracker {
+    employeeId: string;
+    employeeName: string;
+    date: string;
+    timezone: string;
+    policy: AttendancePolicyConfig;
+    sessions: WorkSession[];
+    activeSession: ActiveAttendanceSession | null;
+    sessionCount: number;
+    totalWorkedSeconds: number;
+    totalWorkedHours: number;
+    lateCountInMonth: number;
+    leaveDeductionFromLate: number;
+    leavesAllowedThisMonth: number;
+    leavesUsedThisMonth: number;
+    paidLeaveDeductions: number;
+    attendanceStatus: DailyPresenceStatus;
+    isLateToday: boolean;
+    canCheckIn: boolean;
+    canCheckOut: boolean;
+    lateThresholdLocal: string;
+}
+
+export interface MonthlyAttendancePerformanceRow {
+    employeeId: string;
+    employeeName: string;
+    totalHours: number;
+    lateCount: number;
+    leavesUsed: number;
+    paidLeaveDeductions: number;
+    lateLeaveDeductions: number;
+    status: 'Good' | 'Attention' | 'Critical';
 }
 
 /**

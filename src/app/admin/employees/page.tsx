@@ -29,12 +29,18 @@ type EmployeeFormData = {
     joiningDate: string;
     contactNumber: string;
     startWorkingTime: string;
+        gracePeriodMinutes: number;
+        requiredDailyWorkingHours: number;
+        allowedLeavesPerMonth: number;
+        autoCheckoutHours: number;
+        timezone: string;
 };
 
 const initialForm: EmployeeFormData = {
     name: '', email: '', fatherName: '', cnic: '', picture: '',
     bankName: '', bankTitle: '', bankAccountNumber: '', address: '',
-    jobPosition: '', roles: ['employee'], permissions: [], department: '', leadId: '', status: 'Currently Working', joiningDate: '', contactNumber: '', startWorkingTime: '09:00'
+        jobPosition: '', roles: ['employee'], permissions: [], department: '', leadId: '', status: 'Currently Working', joiningDate: '', contactNumber: '',
+        startWorkingTime: '09:00', gracePeriodMinutes: 10, requiredDailyWorkingHours: 8, allowedLeavesPerMonth: 1, autoCheckoutHours: 12, timezone: 'Asia/Karachi'
 };
 
 const ASSIGNABLE_ROLES: UserRole[] = ['employee', 'lead', 'manager', 'hr', 'admin'];
@@ -103,7 +109,11 @@ export default function EmployeesPage() {
             setFormData((prev) => ({ ...prev, department: value as Department }));
             return;
         }
-        setFormData(prev => ({ ...prev, [name]: value }));
+            if (name === 'gracePeriodMinutes' || name === 'requiredDailyWorkingHours' || name === 'allowedLeavesPerMonth' || name === 'autoCheckoutHours') {
+                setFormData((prev) => ({ ...prev, [name]: Number(value || 0) }));
+                return;
+            }
+            setFormData(prev => ({ ...prev, [name]: value }));
     };
 
     const toggleRole = (role: UserRole) => {
@@ -164,7 +174,12 @@ export default function EmployeesPage() {
             address: emp.address || '', jobPosition: emp.jobPosition || '',
             roles: parseRoleList(emp.role || 'employee'), permissions: parsePermissionList(emp.permissions), department: emp.department || '', leadId: emp.leadId || '',
             status: emp.status || 'Currently Working', joiningDate: emp.joiningDate || '',
-            contactNumber: emp.contactNumber || '', startWorkingTime: emp.startWorkingTime || '09:00'
+            contactNumber: emp.contactNumber || '', startWorkingTime: emp.startWorkingTime || '09:00',
+            gracePeriodMinutes: Number(emp.gracePeriodMinutes ?? 10),
+            requiredDailyWorkingHours: Number(emp.requiredDailyWorkingHours ?? 8),
+            allowedLeavesPerMonth: Number(emp.allowedLeavesPerMonth ?? 1),
+            autoCheckoutHours: Number(emp.autoCheckoutHours ?? 12),
+            timezone: emp.timezone || 'Asia/Karachi'
         });
         setEditingId(emp.id);
         setShowForm(true);
@@ -344,6 +359,26 @@ export default function EmployeesPage() {
                                         <label className="label">Start Working Time</label>
                                         <input type="time" className="input" name="startWorkingTime" value={formData.startWorkingTime} onChange={handleInputChange} />
                                     </div>
+                                                                            <div>
+                                                                                <label className="label">Grace Period (min)</label>
+                                                                                <input type="number" min={0} max={180} className="input" name="gracePeriodMinutes" value={formData.gracePeriodMinutes} onChange={handleInputChange} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="label">Required Hours / Day</label>
+                                                                                <input type="number" min={1} max={24} step="0.5" className="input" name="requiredDailyWorkingHours" value={formData.requiredDailyWorkingHours} onChange={handleInputChange} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="label">Allowed Leaves / Month</label>
+                                                                                <input type="number" min={0} max={31} className="input" name="allowedLeavesPerMonth" value={formData.allowedLeavesPerMonth} onChange={handleInputChange} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="label">Auto Check-Out (hours)</label>
+                                                                                <input type="number" min={1} max={24} className="input" name="autoCheckoutHours" value={formData.autoCheckoutHours} onChange={handleInputChange} />
+                                                                            </div>
+                                                                            <div className="md:col-span-2">
+                                                                                <label className="label">Timezone</label>
+                                                                                <input className="input" name="timezone" placeholder="Asia/Karachi" value={formData.timezone} onChange={handleInputChange} />
+                                                                            </div>
                                     {formData.roles.includes('lead') && (
                                         <div>
                                             <label className="label">Department</label>

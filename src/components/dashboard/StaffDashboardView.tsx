@@ -4,12 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
 import DashboardStatGrid, { DashboardStatCard } from '@/components/dashboard/DashboardStatGrid';
 import SimpleBarChart, { BarChartItem } from '@/components/dashboard/SimpleBarChart';
+import AttendanceTrackerCard from '@/components/attendance/AttendanceTrackerCard';
 import { useAuth } from '@/context/AuthContext';
 import {
+    getAttendanceRecords,
+    getPerformanceRecords,
     getStaffDashboardData,
+    getMonthlyAttendancePerformance,
 } from '@/lib/googleSheets';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { AttendanceRecord, Employee, PaymentType, Penalty, PerformanceRecord, SalarySlip } from '@/types';
+import { AttendanceRecord, Employee, MonthlyAttendancePerformanceRow, PaymentType, Penalty, PerformanceRecord, SalarySlip } from '@/types';
 import { CalendarClock, CheckCircle, CreditCard, Loader2, RefreshCw, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import ImageUploader from '@/components/ImageUploader';
 import toast from 'react-hot-toast';
@@ -31,6 +35,10 @@ export default function StaffDashboardView() {
     const role = user?.role as StaffRole | undefined;
     const now = useMemo(() => new Date(), []);
     const currentMonthName = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    const cacheKey = useMemo(() => {
+        if (!user) return '';
+        return `staff-dashboard-core:${user.id}:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }, [now, user]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [employees, setEmployees] = useState<Employee[]>([]);
@@ -38,8 +46,10 @@ export default function StaffDashboardView() {
     const [salarySlips, setSalarySlips] = useState<SalarySlip[]>([]);
     const [monthlyAttendance, setMonthlyAttendance] = useState<{ records: AttendanceRecord[]; totalWorkingHours: number; totalTrackingHours: number; totalPresents: number; totalAbsents: number; totalLeaves: number; totalHolidays: number; performance: PerformanceRecord | null; } | null>(null);
     const [currentPerformance, setCurrentPerformance] = useState<PerformanceRecord | null>(null);
-    const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
-    const [performanceRecords, setPerformanceRecords] = useState<PerformanceRecord[]>([]);
+    const [teamAttendanceRecords, setTeamAttendanceRecords] = useState<AttendanceRecord[]>([]);
+    const [teamPerformanceRecords, setTeamPerformanceRecords] = useState<PerformanceRecord[]>([]);
+    const [monthlyPerformanceRows, setMonthlyPerformanceRows] = useState<MonthlyAttendancePerformanceRow[]>([]);
+    const [secondaryLoading, setSecondaryLoading] = useState(false);
 
     const [payPenalty, setPayPenalty] = useState<Penalty | null>(null);
     const [submitting, setSubmitting] = useState(false);
@@ -48,9 +58,58 @@ export default function StaffDashboardView() {
     const [payType, setPayType] = useState<PaymentType>('JazzCash');
     const [notes, setNotes] = useState('');
 
+    const loadSecondary = useCallback(async () => {
+        if (!user || role !== 'lead') return;
+        setSecondaryLoading(true);
+        try {
+            const monthlyRows = await getMonthlyAttendancePerformance(now.getMonth() + 1, now.getFullYear());
+            const [attendanceRecords, performanceRecords] = await Promise.all([
+                getAttendanceRecords(),
+                getPerformanceRecords(),
+            ]);
+            setTeamAttendanceRecords(attendanceRecords);
+            setTeamPerformanceRecords(performanceRecords);
+            setMonthlyPerformanceRows(monthlyRows);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to load dashboard data.';
+            toast.error(message);
+        } finally {
+            setSecondaryLoading(false);
+        }
+    }, [now, role, user]);
+
     const load = useCallback(async () => {
         if (!user) return;
-        setLoading(true);
+
+        let hydratedFromCache = false;
+        if (typeof window !== 'undefined' && cacheKey) {
+            const cachedValue = window.localStorage.getItem(cacheKey);
+            if (cachedValue) {
+                try {
+                    const cached = JSON.parse(cachedValue) as {
+                        employees: Employee[];
+                        penalties: Penalty[];
+                        salarySlips: SalarySlip[];
+                        monthlyAttendance: { records: AttendanceRecord[]; totalWorkingHours: number; totalTrackingHours: number; totalPresents: number; totalAbsents: number; totalLeaves: number; totalHolidays: number; performance: PerformanceRecord | null; };
+                        currentPerformance: PerformanceRecord | null;
+                    };
+                    setEmployees(cached.employees || []);
+                    setPenalties(cached.penalties || []);
+                    setSalarySlips(cached.salarySlips || []);
+                    setMonthlyAttendance(cached.monthlyAttendance || null);
+                    setCurrentPerformance(cached.currentPerformance || null);
+                    hydratedFromCache = true;
+                    setLoading(false);
+                } catch {
+                    window.localStorage.removeItem(cacheKey);
+                }
+            }
+        }
+
+        if (!hydratedFromCache) {
+            setLoading(true);
+        }
+
         try {
             const data = await getStaffDashboardData(user.id, now.getMonth() + 1, now.getFullYear());
 
@@ -59,8 +118,24 @@ export default function StaffDashboardView() {
             setMonthlyAttendance(data.monthlyAttendance);
             setCurrentPerformance(data.currentPerformance);
             setEmployees(data.employees);
-            setAttendanceRecords(data.attendanceRecords);
-            setPerformanceRecords(data.performanceRecords);
+
+            if (typeof window !== 'undefined' && cacheKey) {
+                window.localStorage.setItem(cacheKey, JSON.stringify({
+                    employees: data.employees,
+                    penalties: data.penalties,
+                    salarySlips: data.salarySlips,
+                    monthlyAttendance: data.monthlyAttendance,
+                    currentPerformance: data.currentPerformance,
+                }));
+            }
+
+            if (role === 'lead') {
+                void loadSecondary();
+            } else {
+                setTeamAttendanceRecords([]);
+                setTeamPerformanceRecords([]);
+                setMonthlyPerformanceRows([]);
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to load dashboard data.';
             toast.error(message);
@@ -68,7 +143,7 @@ export default function StaffDashboardView() {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [now, user]);
+    }, [cacheKey, loadSecondary, now, role, user]);
 
     useEffect(() => {
         load();
@@ -101,7 +176,7 @@ export default function StaffDashboardView() {
 
     const leadTeamPerformance = directReports.length === 0
         ? []
-        : recentSort(performanceRecords)
+        : recentSort(teamPerformanceRecords)
             .filter((record) => directReports.some((employee) => employee.id === record.employeeId) && record.month === now.getMonth() + 1 && record.year === now.getFullYear())
             .slice(0, 5)
             .map((record) => ({
@@ -113,7 +188,7 @@ export default function StaffDashboardView() {
     const leadAttendance = directReports.length === 0
         ? []
         : directReports.slice(0, 5).map((employee) => {
-            const monthly = attendanceRecords.filter((record) => record.employeeId === employee.id && sameMonth(record.date, now));
+            const monthly = teamAttendanceRecords.filter((record) => record.employeeId === employee.id && sameMonth(record.date, now));
             const present = monthly.filter((record) => record.status === 'Present').length;
             return {
                 label: employee.name,
@@ -152,8 +227,8 @@ export default function StaffDashboardView() {
     const recentPenaltyRows = recentSort(penalties).slice(0, 5);
     const recentSalarySlipRows = recentSort(salarySlips).slice(0, 5);
     const teamRows = directReports.map((employee) => {
-        const teamPerformance = performanceRecords.find((record) => record.employeeId === employee.id && record.month === now.getMonth() + 1 && record.year === now.getFullYear());
-        const teamAttendance = attendanceRecords.filter((record) => record.employeeId === employee.id && sameMonth(record.date, now));
+        const teamPerformance = teamPerformanceRecords.find((record) => record.employeeId === employee.id && record.month === now.getMonth() + 1 && record.year === now.getFullYear());
+        const teamAttendance = teamAttendanceRecords.filter((record) => record.employeeId === employee.id && sameMonth(record.date, now));
         return {
             employee,
             performance: teamPerformance,
@@ -162,6 +237,14 @@ export default function StaffDashboardView() {
             absent: teamAttendance.filter((record) => record.status === 'Absent').length,
         };
     });
+
+    const leadMonthlyPerformanceRows = useMemo(() => {
+        if (role !== 'lead') return [];
+        const directIds = new Set(directReports.map((employee) => employee.id));
+        return monthlyPerformanceRows.filter((row) => directIds.has(row.employeeId));
+    }, [role, directReports, monthlyPerformanceRows]);
+
+    const teamDataLoading = role === 'lead' && secondaryLoading;
 
     const paySubmit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -226,6 +309,8 @@ export default function StaffDashboardView() {
                     <>
                         <DashboardStatGrid cards={cards} columns={4} />
 
+                        {user ? <AttendanceTrackerCard employeeId={user.id} /> : null}
+
                         <div className="grid gap-6 lg:grid-cols-2">
                             <SimpleBarChart
                                 title="Attendance Status"
@@ -248,13 +333,13 @@ export default function StaffDashboardView() {
                                     title="Team Performance"
                                     subtitle="Current month direct reports"
                                     items={leadTeamPerformance}
-                                    emptyText="No team performance records found."
+                                    emptyText={teamDataLoading ? 'Loading team performance...' : 'No team performance records found.'}
                                 />
                                 <SimpleBarChart
                                     title="Team Attendance"
                                     subtitle="Present count by direct report"
                                     items={leadAttendance}
-                                    emptyText="No team attendance records found."
+                                    emptyText={teamDataLoading ? 'Loading team attendance...' : 'No team attendance records found.'}
                                 />
                             </div>
                         ) : null}
@@ -340,7 +425,13 @@ export default function StaffDashboardView() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {teamRows.map((row) => (
+                                                    {teamDataLoading ? (
+                                                        <tr>
+                                                            <td colSpan={6} className="py-8 text-center" style={{ color: 'var(--text-secondary)' }}>
+                                                                Loading team analytics...
+                                                            </td>
+                                                        </tr>
+                                                    ) : teamRows.map((row) => (
                                                 <tr key={row.employee.id}>
                                                     <td>
                                                         <div>
@@ -353,6 +444,43 @@ export default function StaffDashboardView() {
                                                     <td>{row.present}</td>
                                                     <td>{row.leave}</td>
                                                     <td>{row.absent}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {role === 'lead' && leadMonthlyPerformanceRows.length > 0 ? (
+                            <div className="card" style={{ padding: 0 }}>
+                                <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+                                    <h3 className="font-semibold">Monthly Attendance Performance</h3>
+                                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{currentMonthName}</span>
+                                </div>
+                                <div className="table-wrapper">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Total Hours</th>
+                                                <th>Late</th>
+                                                <th>Leaves Used</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {leadMonthlyPerformanceRows.map((row) => (
+                                                <tr key={row.employeeId}>
+                                                    <td>{row.employeeName}</td>
+                                                    <td>{row.totalHours.toFixed(2)}h</td>
+                                                    <td>{row.lateCount}</td>
+                                                    <td>{row.leavesUsed + row.paidLeaveDeductions}</td>
+                                                    <td>
+                                                        <span className={`px-2 py-1 rounded text-xs font-semibold ${row.status === 'Good' ? 'bg-green-500/10 text-green-500' : row.status === 'Attention' ? 'bg-amber-500/10 text-amber-500' : 'bg-red-500/10 text-red-500'}`}>
+                                                            {row.status}
+                                                        </span>
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>

@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing or invalid action' }, { status: 400 });
         }
 
-        const appsScriptUrl = process.env.APPS_SCRIPT_URL || process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
+        const appsScriptUrl = (process.env.APPS_SCRIPT_URL || process.env.NEXT_PUBLIC_APPS_SCRIPT_URL || '').trim();
         if (!appsScriptUrl) {
             return NextResponse.json({ error: 'Apps Script URL is not configured' }, { status: 500 });
         }

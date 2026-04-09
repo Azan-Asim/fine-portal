@@ -12,8 +12,8 @@ import DailyAttendanceView from '@/components/DailyAttendanceView';
  * Route: /employee/attendance
  *
  * Allows employees to:
- * - Submit daily check-in (morning)
- * - Submit daily check-out (evening)
+ * - Submit daily check-in anytime during the day
+ * - Submit daily check-out anytime after a check-in exists for the same day
  * - View their recent submissions
  */
 export default function EmployeeAttendancePage() {
@@ -42,7 +42,7 @@ export default function EmployeeAttendancePage() {
                 {/* Header */}
                 <div className="mb-8">
                     <h1 className="text-4xl font-bold text-gray-800 mb-2">Attendance & Daily Report</h1>
-                    <p className="text-gray-600">Welcome, {user.name}. Submit your daily check-in and check-out here.</p>
+                    <p className="text-gray-600">Welcome, {user.name}. Submit check-in and check-out from the same form whenever needed during the day.</p>
                 </div>
 
                 {/* Main Form */}
@@ -62,14 +62,14 @@ export default function EmployeeAttendancePage() {
                     <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
                         <h3 className="font-semibold text-blue-900 mb-2">📋 Check-In</h3>
                         <p className="text-sm text-blue-800">
-                            Submit in the morning to mark the start of your workday and share your daily plan.
+                            Submit anytime to mark the start of your workday and share your daily plan.
                         </p>
                     </div>
 
                     <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
                         <h3 className="font-semibold text-green-900 mb-2">✅ Check-Out</h3>
                         <p className="text-sm text-green-800">
-                            Submit in the evening to mark the end of your workday and summarize your accomplishments.
+                            Submit anytime after check-in to mark the end of your workday and summarize your accomplishments.
                         </p>
                     </div>
 
@@ -85,9 +85,8 @@ export default function EmployeeAttendancePage() {
                 <div className="mt-8 bg-white rounded-lg shadow-md p-6">
                     <h2 className="text-xl font-bold text-gray-800 mb-4">💡 Tips</h2>
                     <ul className="space-y-2 text-gray-700">
-                        <li>✓ Always submit both check-in and check-out to get accurate working hours</li>
-                        <li>✓ Official start time is <strong>9:00 AM</strong> - arrivals after <strong>9:10 AM</strong> are marked as late</li>
-                        <li>✓ 4 late arrivals = 1 unpaid leave deducted from your salary</li>
+                        <li>✓ Use the same form for both check-in and check-out on the same day</li>
+                        <li>✓ Check-out is only allowed after a check-in exists for that day</li>
                         <li>✓ Previous day's records are automatically locked at midnight</li>
                         <li>✓ Contact HR if you need to make corrections to past records</li>
                     </ul>

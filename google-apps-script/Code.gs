@@ -21,6 +21,7 @@ const PROJECTS_SHEET = 'Projects';
 const RULES_SHEET = 'Rules';
 const DAILY_WORK_REPORTS_SHEET = 'Daily Work Reports';
 const DAILY_ATTENDANCE_SUMMARY_SHEET = 'Daily Attendance Summary';
+const ATTENDANCE_SESSIONS_SHEET = 'Attendance Sessions';
 const MONTHLY_PAYROLL_DATA_SHEET = 'Monthly Payroll Data';
 const PROJECT_FOLDER_PROPERTY_KEY = 'PROJECT_DOCS_ROOT_FOLDER_ID';
 
@@ -114,6 +115,11 @@ function doGet(e) {
     if (action === 'getDailyWorkSubmissions') return respond(getDailyWorkSubmissions());
     if (action === 'getDailyAttendanceSummariesByDate') return respond(getDailyAttendanceSummariesByDate(payload.date));
     if (action === 'getDailyAttendanceSummaries') return respond(getDailyAttendanceSummaries(payload.startDate, payload.endDate));
+    if (action === 'getAttendanceTodayTracker') return respond(getAttendanceTodayTracker(payload.employeeId));
+    if (action === 'checkInAttendance') return respond(checkInAttendance(payload.employeeId));
+    if (action === 'checkOutAttendance') return respond(checkOutAttendance(payload.employeeId));
+    if (action === 'updateAttendancePolicy') return respond(updateAttendancePolicy(payload.employeeId, payload.policy));
+    if (action === 'getMonthlyAttendancePerformance') return respond(getMonthlyAttendancePerformance(payload.month, payload.year));
     if (action === 'getMonthlyPayrollData') return respond(getMonthlyPayrollData(payload.employeeId, payload.month, payload.year));
     if (action === 'getAllMonthlyPayrollData') return respond(getAllMonthlyPayrollData(payload.month, payload.year));
     if (action === 'generateMonthlyPayroll') return respond(generateMonthlyPayroll(payload.month, payload.year));
@@ -142,7 +148,7 @@ function getSheet(name) {
   if (!sheet) {
     sheet = SS.insertSheet(name);
     if (name === EMPLOYEES_SHEET) {
-      sheet.appendRow(['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Permissions', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Start Working Time', 'Created At']);
+      sheet.appendRow(['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Permissions', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Start Working Time', 'Created At', 'Grace Period Minutes', 'Required Daily Working Hours', 'Allowed Leaves Per Month', 'Auto Checkout Hours', 'Timezone']);
     } else if (name === PENALTIES_SHEET) {
       sheet.appendRow(['ID', 'Employee ID', 'Employee Name', 'Email', 'Reason',
         'Reference URL', 'Amount', 'Date', 'Status', 'Payment Proof',
@@ -170,7 +176,9 @@ function getSheet(name) {
     } else if (name === DAILY_WORK_REPORTS_SHEET) {
       sheet.appendRow(['ID', 'Employee ID', 'Employee Email', 'Date', 'Submission Type', 'Submission Time', 'Todays Summary', 'Yesterdays Plan', 'Tomorrows Plan', 'Challenges', 'Support Needed', 'Created At']);
     } else if (name === DAILY_ATTENDANCE_SUMMARY_SHEET) {
-      sheet.appendRow(['ID', 'Employee ID', 'Employee Email', 'Employee Name', 'Date', 'Check-In Time', 'Check-Out Time', 'Total Working Hours', 'Is Late Check-In', 'Check-In Status', 'Status', 'Work Summary', 'Day Plan', 'Challenges And Support', 'Created At', 'Locked At']);
+      sheet.appendRow(['ID', 'Employee ID', 'Employee Email', 'Employee Name', 'Date', 'Check-In Time', 'Check-Out Time', 'Total Working Hours', 'Is Late Check-In', 'Check-In Status', 'Status', 'Work Summary', 'Day Plan', 'Challenges And Support', 'Created At', 'Locked At', 'Session Count', 'Attendance Status', 'Required Hours', 'Overtime Hours', 'Half Day Threshold', 'Updated At']);
+    } else if (name === ATTENDANCE_SESSIONS_SHEET) {
+      sheet.appendRow(['ID', 'Employee ID', 'Date', 'Session Number', 'Check-In UTC', 'Check-Out UTC', 'Check-In Local', 'Check-Out Local', 'Duration Seconds', 'Is Late', 'Auto Closed', 'Created At', 'Updated At']);
     } else if (name === MONTHLY_PAYROLL_DATA_SHEET) {
       sheet.appendRow(['ID', 'Employee ID', 'Employee Name', 'Email', 'Month', 'Year', 'Base Salary', 'Total Working Days', 'Total Present', 'Total Late Comings', 'Paid Leaves Allowed', 'Paid Leaves Used', 'Unpaid Leaves Calculated', 'Remaining Paid Leaves', 'Total Leave Deduction', 'Late Penalty Deduction', 'Other Deductions', 'Total Deductions', 'Net Pay', 'Payroll Status', 'Created At', 'Updated At', 'Approved By', 'Approved At']);
     }
@@ -182,8 +190,11 @@ function getSheet(name) {
   if (name === EMPLOYEES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() === 19) {
     sheet.insertColumnAfter(18);
   }
-  if (name === EMPLOYEES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 20) {
-    sheet.getRange(1, 1, 1, 20).setValues([['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Permissions', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Start Working Time', 'Created At']]);
+  if (name === EMPLOYEES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 25) {
+    if (sheet.getLastColumn() < 25) {
+      sheet.insertColumnsAfter(sheet.getLastColumn(), 25 - sheet.getLastColumn());
+    }
+    sheet.getRange(1, 1, 1, 25).setValues([['ID', 'Name', 'Email', 'Father Name', 'CNIC', 'Picture', 'Bank Name', 'Bank Title', 'Bank Account Number', 'Address', 'Job Position', 'Role', 'Permissions', 'Department', 'Lead ID', 'Status', 'Joining Date', 'Contact Number', 'Start Working Time', 'Created At', 'Grace Period Minutes', 'Required Daily Working Hours', 'Allowed Leaves Per Month', 'Auto Checkout Hours', 'Timezone']]);
   }
   if (name === PAYROLL_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 14) {
     sheet.getRange(1, 1, 1, 14).setValues([['ID', 'Payroll Date', 'Cheque No', 'Salary Month', 'Salary Year', 'Prepared By', 'Designation', 'Total', 'Line Items JSON', 'Payroll PDF HTML', 'Cheque Proof URL', 'Salary Received', 'Salary Received At', 'Created At']]);
@@ -203,6 +214,18 @@ function getSheet(name) {
   if (name === RULES_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 12) {
     sheet.getRange(1, 1, 1, 12).setValues([['ID', 'Target Role', 'Title', 'Content', 'Active', 'Sort Order', 'Created By', 'Created By Name', 'Updated By', 'Updated By Name', 'Created At', 'Updated At']]);
   }
+  if (name === DAILY_ATTENDANCE_SUMMARY_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 22) {
+    if (sheet.getLastColumn() < 22) {
+      sheet.insertColumnsAfter(sheet.getLastColumn(), 22 - sheet.getLastColumn());
+    }
+    sheet.getRange(1, 1, 1, 22).setValues([['ID', 'Employee ID', 'Employee Email', 'Employee Name', 'Date', 'Check-In Time', 'Check-Out Time', 'Total Working Hours', 'Is Late Check-In', 'Check-In Status', 'Status', 'Work Summary', 'Day Plan', 'Challenges And Support', 'Created At', 'Locked At', 'Session Count', 'Attendance Status', 'Required Hours', 'Overtime Hours', 'Half Day Threshold', 'Updated At']]);
+  }
+  if (name === ATTENDANCE_SESSIONS_SHEET && sheet.getLastRow() > 0 && sheet.getLastColumn() < 13) {
+    if (sheet.getLastColumn() < 13) {
+      sheet.insertColumnsAfter(sheet.getLastColumn(), 13 - sheet.getLastColumn());
+    }
+    sheet.getRange(1, 1, 1, 13).setValues([['ID', 'Employee ID', 'Date', 'Session Number', 'Check-In UTC', 'Check-Out UTC', 'Check-In Local', 'Check-Out Local', 'Duration Seconds', 'Is Late', 'Auto Closed', 'Created At', 'Updated At']]);
+  }
 
   return sheet;
 }
@@ -221,7 +244,7 @@ function sheetToObjects(sheet, headers) {
   });
 }
 
-const E_HEADERS = ['id', 'name', 'email', 'fatherName', 'cnic', 'picture', 'bankName', 'bankTitle', 'bankAccountNumber', 'address', 'jobPosition', 'role', 'permissions', 'department', 'leadId', 'status', 'joiningDate', 'contactNumber', 'startWorkingTime', 'createdAt'];
+const E_HEADERS = ['id', 'name', 'email', 'fatherName', 'cnic', 'picture', 'bankName', 'bankTitle', 'bankAccountNumber', 'address', 'jobPosition', 'role', 'permissions', 'department', 'leadId', 'status', 'joiningDate', 'contactNumber', 'startWorkingTime', 'createdAt', 'gracePeriodMinutes', 'requiredDailyWorkingHours', 'allowedLeavesPerMonth', 'autoCheckoutHours', 'timezone'];
 
 function getEmployees() {
   const sheet = getSheet(EMPLOYEES_SHEET);
@@ -236,7 +259,8 @@ function addEmployee(body) {
   const row = [
     id, body.name, body.email, body.fatherName || '', body.cnic || '', body.picture || '',
     body.bankName || '', body.bankTitle || '', body.bankAccountNumber || '', body.address || '',
-    body.jobPosition || '', body.role || 'employee', body.permissions || '', body.department || '', body.leadId || '', body.status || '', body.joiningDate || '', body.contactNumber || '', body.startWorkingTime || '09:00', createdAt
+    body.jobPosition || '', body.role || 'employee', body.permissions || '', body.department || '', body.leadId || '', body.status || '', body.joiningDate || '', body.contactNumber || '', body.startWorkingTime || '09:00',
+    createdAt, Number(body.gracePeriodMinutes || 10), Number(body.requiredDailyWorkingHours || 8), Number(body.allowedLeavesPerMonth || 1), Number(body.autoCheckoutHours || 12), String(body.timezone || Session.getScriptTimeZone() || 'UTC')
   ];
   sheet.appendRow(row);
   return { 
@@ -245,7 +269,12 @@ function addEmployee(body) {
     bankName: body.bankName || '', bankTitle: body.bankTitle || '', bankAccountNumber: body.bankAccountNumber || '',
     address: body.address || '', jobPosition: body.jobPosition || '', role: body.role || 'employee', permissions: body.permissions || '',
     department: body.department || '', leadId: body.leadId || '', status: body.status || '',
-    joiningDate: body.joiningDate || '', contactNumber: body.contactNumber || '', startWorkingTime: body.startWorkingTime || '09:00', createdAt
+    joiningDate: body.joiningDate || '', contactNumber: body.contactNumber || '', startWorkingTime: body.startWorkingTime || '09:00', createdAt,
+    gracePeriodMinutes: Number(body.gracePeriodMinutes || 10),
+    requiredDailyWorkingHours: Number(body.requiredDailyWorkingHours || 8),
+    allowedLeavesPerMonth: Number(body.allowedLeavesPerMonth || 1),
+    autoCheckoutHours: Number(body.autoCheckoutHours || 12),
+    timezone: String(body.timezone || Session.getScriptTimeZone() || 'UTC')
   };
 }
 
@@ -254,7 +283,7 @@ function updateEmployee(id, updates) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === id) {
-      const colMap = { id: 0, name: 1, email: 2, fatherName: 3, cnic: 4, picture: 5, bankName: 6, bankTitle: 7, bankAccountNumber: 8, address: 9, jobPosition: 10, role: 11, permissions: 12, department: 13, leadId: 14, status: 15, joiningDate: 16, contactNumber: 17, startWorkingTime: 18, createdAt: 19 };
+      const colMap = { id: 0, name: 1, email: 2, fatherName: 3, cnic: 4, picture: 5, bankName: 6, bankTitle: 7, bankAccountNumber: 8, address: 9, jobPosition: 10, role: 11, permissions: 12, department: 13, leadId: 14, status: 15, joiningDate: 16, contactNumber: 17, startWorkingTime: 18, createdAt: 19, gracePeriodMinutes: 20, requiredDailyWorkingHours: 21, allowedLeavesPerMonth: 22, autoCheckoutHours: 23, timezone: 24 };
       for (const key in updates) {
         if (colMap[key] !== undefined) {
           sheet.getRange(i + 1, colMap[key] + 1).setValue(updates[key]);
@@ -1912,8 +1941,6 @@ function getStaffDashboardData(employeeId, month, year) {
     salarySlips: getSalarySlipsForEmployee(employeeId),
     monthlyAttendance: getEmployeeMonthlyAttendance(employeeId, m, y),
     currentPerformance: getPerformanceRecord(employeeId, m, y),
-    attendanceRecords: getAttendanceRecords(),
-    performanceRecords: getPerformanceRecords(),
   };
 }
 
@@ -2217,7 +2244,8 @@ function deleteRule(id) {
 // ============ DAILY WORK REPORTS & ATTENDANCE SYSTEM ============
 
 const DWR_HEADERS = ['id', 'employeeId', 'employeeEmail', 'date', 'submissionType', 'submissionTime', 'todaysSummary', 'yesterdaysPlan', 'tomorrowsPlan', 'challenges', 'supportNeeded', 'createdAt'];
-const DAS_HEADERS = ['id', 'employeeId', 'employeeEmail', 'employeeName', 'date', 'checkInTime', 'checkOutTime', 'totalWorkingHours', 'isLateCheckIn', 'checkInStatus', 'status', 'workSummary', 'dayPlan', 'challengesAndSupport', 'createdAt', 'lockedAt'];
+const DAS_HEADERS = ['id', 'employeeId', 'employeeEmail', 'employeeName', 'date', 'checkInTime', 'checkOutTime', 'totalWorkingHours', 'isLateCheckIn', 'checkInStatus', 'status', 'workSummary', 'dayPlan', 'challengesAndSupport', 'createdAt', 'lockedAt', 'sessionCount', 'attendanceStatus', 'requiredHours', 'overtimeHours', 'halfDayThreshold', 'updatedAt'];
+const SESSION_HEADERS = ['id', 'employeeId', 'date', 'sessionNumber', 'checkInUtc', 'checkOutUtc', 'checkInLocal', 'checkOutLocal', 'durationSeconds', 'isLate', 'autoClosed', 'createdAt', 'updatedAt'];
 const MPD_HEADERS = ['id', 'employeeId', 'employeeName', 'email', 'month', 'year', 'baseSalary', 'totalWorkingDays', 'totalPresent', 'totalLateComings', 'paidLeavesAllowed', 'paidLeavesUsed', 'unpaidLeavesCalculated', 'remainingPaidLeaves', 'totalLeaveDeduction', 'latePenaltyDeduction', 'otherDeductions', 'totalDeductions', 'netPay', 'payrollStatus', 'createdAt', 'updatedAt', 'approvedBy', 'approvedAt'];
 
 /**
@@ -2417,6 +2445,441 @@ function parseWorkingTime(value) {
   };
 }
 
+function parseBoolean(value) {
+  const v = String(value || '').toLowerCase();
+  return v === 'true' || v === '1' || v === 'yes';
+}
+
+function getEmployeeById(employeeId) {
+  const employees = getEmployees();
+  return employees.find(function(employee) { return String(employee.id) === String(employeeId); }) || null;
+}
+
+function getEmployeeAttendancePolicy(employeeId) {
+  const employee = getEmployeeById(employeeId);
+  if (!employee) {
+    throw new Error('Employee not found: ' + employeeId);
+  }
+
+  const timezone = String(employee.timezone || Session.getScriptTimeZone() || 'UTC');
+  return {
+    employee: employee,
+    startWorkingTime: String(employee.startWorkingTime || '09:00'),
+    gracePeriodMinutes: Number(employee.gracePeriodMinutes || 10),
+    requiredDailyWorkingHours: Number(employee.requiredDailyWorkingHours || 8),
+    allowedLeavesPerMonth: Number(employee.allowedLeavesPerMonth || 1),
+    autoCheckoutHours: Number(employee.autoCheckoutHours || 12),
+    timezone: timezone,
+  };
+}
+
+function getDateInTimezone(timezone, dateObj) {
+  return Utilities.formatDate(dateObj || new Date(), timezone, 'yyyy-MM-dd');
+}
+
+function getDateMonthInTimezone(timezone, dateObj) {
+  return {
+    month: Number(Utilities.formatDate(dateObj || new Date(), timezone, 'M')),
+    year: Number(Utilities.formatDate(dateObj || new Date(), timezone, 'yyyy')),
+  };
+}
+
+function getTimeInTimezone(timezone, dateObj) {
+  return Utilities.formatDate(dateObj || new Date(), timezone, 'yyyy-MM-dd HH:mm:ss');
+}
+
+function getSessionRowsByEmployeeDate(employeeId, dateStr) {
+  const sheet = getSheet(ATTENDANCE_SESSIONS_SHEET);
+  const rows = sheet.getDataRange().getValues();
+  const matches = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][1]) === String(employeeId) && String(rows[i][2]) === String(dateStr)) {
+      matches.push({ index: i + 1, row: rows[i] });
+    }
+  }
+  return matches;
+}
+
+function isLateSession(checkInDate, policy) {
+  const timezone = policy.timezone;
+  const dateKey = getDateInTimezone(timezone, checkInDate);
+  const startTime = parseWorkingTime(policy.startWorkingTime);
+  const startMinutes = (startTime.hour * 60) + startTime.minute + Number(policy.gracePeriodMinutes || 0);
+
+  const hour = Number(Utilities.formatDate(checkInDate, timezone, 'H'));
+  const minute = Number(Utilities.formatDate(checkInDate, timezone, 'm'));
+  const checkInMinutes = (hour * 60) + minute;
+  return checkInMinutes > startMinutes;
+}
+
+function calculateHoursFromSeconds(seconds) {
+  return Number((Number(seconds || 0) / 3600).toFixed(2));
+}
+
+function deriveDailyAttendanceStatus(totalWorkedHours, requiredHours, isLate, hasAnySession) {
+  if (!hasAnySession || totalWorkedHours <= 0) return 'Absent';
+  if (totalWorkedHours < (requiredHours / 2)) return 'Half Day';
+  if (totalWorkedHours > requiredHours) return 'Overtime';
+  if (isLate) return 'Late';
+  return 'Present';
+}
+
+function autoCloseStaleSessions(employeeId, dateStr, policy) {
+  const now = new Date();
+  const sessionRows = getSessionRowsByEmployeeDate(employeeId, dateStr);
+  const sheet = getSheet(ATTENDANCE_SESSIONS_SHEET);
+  const maxMs = Number(policy.autoCheckoutHours || 12) * 3600 * 1000;
+
+  sessionRows.forEach(function(entry) {
+    const row = entry.row;
+    const hasCheckout = !!String(row[5] || '').trim();
+    if (hasCheckout) return;
+
+    const checkInUtc = String(row[4] || '');
+    const checkInDate = new Date(checkInUtc);
+    if (isNaN(checkInDate.getTime())) return;
+
+    if ((now.getTime() - checkInDate.getTime()) >= maxMs) {
+      const autoCheckoutDate = new Date(checkInDate.getTime() + maxMs);
+      const durationSeconds = Math.max(0, Math.round((autoCheckoutDate.getTime() - checkInDate.getTime()) / 1000));
+      const nowIso = now.toISOString();
+      sheet.getRange(entry.index, 6).setValue(autoCheckoutDate.toISOString());
+      sheet.getRange(entry.index, 8).setValue(getTimeInTimezone(policy.timezone, autoCheckoutDate));
+      sheet.getRange(entry.index, 9).setValue(durationSeconds);
+      sheet.getRange(entry.index, 11).setValue('true');
+      sheet.getRange(entry.index, 13).setValue(nowIso);
+    }
+  });
+}
+
+function upsertDailyAttendanceSummaryFromSessions(employeeId, dateStr, policy) {
+  const sessionRows = getSessionRowsByEmployeeDate(employeeId, dateStr)
+    .map(function(entry) { return entry.row; })
+    .sort(function(a, b) { return Number(a[3] || 0) - Number(b[3] || 0); });
+
+  const employee = getEmployeeById(employeeId);
+  if (!employee) {
+    throw new Error('Employee not found: ' + employeeId);
+  }
+
+  let totalWorkedSeconds = 0;
+  let isLate = false;
+  let firstCheckInUtc = '';
+  let lastCheckOutUtc = '';
+
+  sessionRows.forEach(function(row, idx) {
+    const checkInUtc = String(row[4] || '');
+    const checkOutUtc = String(row[5] || '');
+    const checkInDate = new Date(checkInUtc);
+    if (idx === 0) {
+      firstCheckInUtc = checkInUtc;
+      if (!isNaN(checkInDate.getTime())) {
+        isLate = isLateSession(checkInDate, policy) || parseBoolean(row[9]);
+      } else {
+        isLate = parseBoolean(row[9]);
+      }
+    }
+    if (checkOutUtc) {
+      lastCheckOutUtc = checkOutUtc;
+      const duration = Number(row[8] || 0);
+      if (duration > 0) {
+        totalWorkedSeconds += duration;
+      } else if (!isNaN(new Date(checkOutUtc).getTime()) && !isNaN(checkInDate.getTime())) {
+        totalWorkedSeconds += Math.max(0, Math.round((new Date(checkOutUtc).getTime() - checkInDate.getTime()) / 1000));
+      }
+    }
+  });
+
+  const totalHours = calculateHoursFromSeconds(totalWorkedSeconds);
+  const requiredHours = Number(policy.requiredDailyWorkingHours || 8);
+  const attendanceStatus = deriveDailyAttendanceStatus(totalHours, requiredHours, isLate, sessionRows.length > 0);
+  const overtimeHours = Math.max(0, Number((totalHours - requiredHours).toFixed(2)));
+  const halfDayThreshold = Number((requiredHours / 2).toFixed(2));
+  const nowIso = new Date().toISOString();
+  const checkInStatus = isLate ? 'Late' : 'On Time';
+
+  const sheet = getSheet(DAILY_ATTENDANCE_SUMMARY_SHEET);
+  const rows = sheet.getDataRange().getValues();
+  let foundIndex = -1;
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][1]) === String(employeeId) && String(rows[i][4]) === String(dateStr)) {
+      foundIndex = i + 1;
+      break;
+    }
+  }
+
+  const payload = [
+    employeeId,
+    String(employee.email || '').toLowerCase(),
+    String(employee.name || ''),
+    dateStr,
+    firstCheckInUtc || '',
+    lastCheckOutUtc || '',
+    totalHours,
+    String(isLate),
+    checkInStatus,
+    'Open',
+    '',
+    '',
+    '',
+    nowIso,
+    '',
+    sessionRows.length,
+    attendanceStatus,
+    requiredHours,
+    overtimeHours,
+    halfDayThreshold,
+    nowIso,
+  ];
+
+  if (foundIndex > 0) {
+    sheet.getRange(foundIndex, 2, 1, 21).setValues([payload]);
+  } else {
+    sheet.appendRow([generateId()].concat(payload));
+  }
+}
+
+function getAttendanceTodayTracker(employeeId) {
+  if (!employeeId) throw new Error('employeeId is required');
+  const policy = getEmployeeAttendancePolicy(employeeId);
+  const now = new Date();
+  const dateStr = getDateInTimezone(policy.timezone, now);
+
+  autoCloseStaleSessions(employeeId, dateStr, policy);
+  upsertDailyAttendanceSummaryFromSessions(employeeId, dateStr, policy);
+
+  const sessionRows = getSessionRowsByEmployeeDate(employeeId, dateStr)
+    .map(function(entry) { return entry.row; })
+    .sort(function(a, b) { return Number(a[3] || 0) - Number(b[3] || 0); });
+
+  let totalWorkedSeconds = 0;
+  let activeSession = null;
+  let isLateToday = false;
+  const sessions = [];
+
+  sessionRows.forEach(function(row, idx) {
+    const checkInUtc = String(row[4] || '');
+    const checkOutUtc = String(row[5] || '');
+    const checkInDate = new Date(checkInUtc);
+    const hasCheckout = !!checkOutUtc;
+    const durationSeconds = hasCheckout
+      ? Number(row[8] || 0)
+      : Math.max(0, Math.round((now.getTime() - checkInDate.getTime()) / 1000));
+
+    if (idx === 0) {
+      isLateToday = parseBoolean(row[9]) || (!isNaN(checkInDate.getTime()) && isLateSession(checkInDate, policy));
+    }
+
+    if (!hasCheckout) {
+      activeSession = {
+        sessionId: String(row[0]),
+        checkInUtc: checkInUtc,
+        checkInLocal: String(row[6] || ''),
+        activeDurationSeconds: Math.max(0, durationSeconds),
+      };
+    }
+
+    if (hasCheckout) totalWorkedSeconds += Math.max(0, Number(durationSeconds || 0));
+    else totalWorkedSeconds += Math.max(0, Number(durationSeconds || 0));
+
+    sessions.push({
+      checkIn: checkInUtc,
+      checkOut: checkOutUtc || '',
+    });
+  });
+
+  const totalWorkedHours = calculateHoursFromSeconds(totalWorkedSeconds);
+  const attendanceStatus = deriveDailyAttendanceStatus(totalWorkedHours, Number(policy.requiredDailyWorkingHours || 8), isLateToday, sessions.length > 0);
+
+  const monthYear = getDateMonthInTimezone(policy.timezone, now);
+  const summaries = getDailyAttendanceSummaries();
+  const monthRows = summaries.filter(function(item) {
+    if (String(item.employeeId) !== String(employeeId)) return false;
+    const d = new Date(String(item.date || '') + 'T00:00:00');
+    if (isNaN(d.getTime())) return false;
+    return d.getFullYear() === monthYear.year && (d.getMonth() + 1) === monthYear.month;
+  });
+  const lateCountInMonth = monthRows.filter(function(item) { return !!item.isLateCheckIn; }).length;
+  const leaveDeductionFromLate = Math.floor(lateCountInMonth / 4);
+  const leavesAllowed = Number(policy.allowedLeavesPerMonth || 1);
+  const leavesUsed = Math.min(leavesAllowed, leaveDeductionFromLate);
+  const paidLeaveDeductions = Math.max(0, leaveDeductionFromLate - leavesAllowed);
+
+  const threshold = parseWorkingTime(policy.startWorkingTime);
+  const thresholdDate = new Date();
+  thresholdDate.setHours(threshold.hour, threshold.minute + Number(policy.gracePeriodMinutes || 0), 0, 0);
+
+  return {
+    employeeId: String(policy.employee.id),
+    employeeName: String(policy.employee.name || ''),
+    date: dateStr,
+    timezone: policy.timezone,
+    policy: {
+      startWorkingTime: policy.startWorkingTime,
+      gracePeriodMinutes: Number(policy.gracePeriodMinutes || 10),
+      requiredDailyWorkingHours: Number(policy.requiredDailyWorkingHours || 8),
+      allowedLeavesPerMonth: Number(policy.allowedLeavesPerMonth || 1),
+      autoCheckoutHours: Number(policy.autoCheckoutHours || 12),
+      timezone: policy.timezone,
+    },
+    sessions: sessions,
+    activeSession: activeSession,
+    sessionCount: sessions.length,
+    totalWorkedSeconds: totalWorkedSeconds,
+    totalWorkedHours: totalWorkedHours,
+    lateCountInMonth: lateCountInMonth,
+    leaveDeductionFromLate: leaveDeductionFromLate,
+    leavesAllowedThisMonth: leavesAllowed,
+    leavesUsedThisMonth: leavesUsed,
+    paidLeaveDeductions: paidLeaveDeductions,
+    attendanceStatus: attendanceStatus,
+    isLateToday: isLateToday,
+    canCheckIn: activeSession === null,
+    canCheckOut: activeSession !== null,
+    lateThresholdLocal: getTimeInTimezone(policy.timezone, thresholdDate),
+  };
+}
+
+function checkInAttendance(employeeId) {
+  if (!employeeId) throw new Error('employeeId is required');
+  const policy = getEmployeeAttendancePolicy(employeeId);
+  const now = new Date();
+  const dateStr = getDateInTimezone(policy.timezone, now);
+
+  autoCloseStaleSessions(employeeId, dateStr, policy);
+  const sessions = getSessionRowsByEmployeeDate(employeeId, dateStr);
+  const hasOpenSession = sessions.some(function(entry) {
+    return !String(entry.row[5] || '').trim();
+  });
+  if (hasOpenSession) {
+    throw new Error('Already checked in. Please check out before starting another session.');
+  }
+
+  const checkInDate = new Date();
+  const sessionNumber = sessions.length + 1;
+  const isLate = isLateSession(checkInDate, policy);
+  const nowIso = checkInDate.toISOString();
+
+  const sheet = getSheet(ATTENDANCE_SESSIONS_SHEET);
+  sheet.appendRow([
+    generateId(),
+    String(employeeId),
+    dateStr,
+    sessionNumber,
+    nowIso,
+    '',
+    getTimeInTimezone(policy.timezone, checkInDate),
+    '',
+    0,
+    String(isLate),
+    'false',
+    nowIso,
+    nowIso,
+  ]);
+
+  upsertDailyAttendanceSummaryFromSessions(employeeId, dateStr, policy);
+  return getAttendanceTodayTracker(employeeId);
+}
+
+function checkOutAttendance(employeeId) {
+  if (!employeeId) throw new Error('employeeId is required');
+  const policy = getEmployeeAttendancePolicy(employeeId);
+  const now = new Date();
+  const dateStr = getDateInTimezone(policy.timezone, now);
+  autoCloseStaleSessions(employeeId, dateStr, policy);
+
+  const sessions = getSessionRowsByEmployeeDate(employeeId, dateStr)
+    .sort(function(a, b) { return Number(b.row[3] || 0) - Number(a.row[3] || 0); });
+  const active = sessions.find(function(entry) {
+    return !String(entry.row[5] || '').trim();
+  });
+
+  if (!active) {
+    throw new Error('No active session found. Please check in first.');
+  }
+
+  const checkInDate = new Date(String(active.row[4] || ''));
+  const nowIso = now.toISOString();
+  const durationSeconds = isNaN(checkInDate.getTime())
+    ? 0
+    : Math.max(0, Math.round((now.getTime() - checkInDate.getTime()) / 1000));
+
+  const sheet = getSheet(ATTENDANCE_SESSIONS_SHEET);
+  sheet.getRange(active.index, 6).setValue(nowIso);
+  sheet.getRange(active.index, 8).setValue(getTimeInTimezone(policy.timezone, now));
+  sheet.getRange(active.index, 9).setValue(durationSeconds);
+  sheet.getRange(active.index, 13).setValue(nowIso);
+
+  upsertDailyAttendanceSummaryFromSessions(employeeId, dateStr, policy);
+  return getAttendanceTodayTracker(employeeId);
+}
+
+function updateAttendancePolicy(employeeId, policy) {
+  if (!employeeId) throw new Error('employeeId is required');
+  if (!policy || typeof policy !== 'object') throw new Error('policy object is required');
+
+  const normalizedUpdates = {};
+  if (policy.startWorkingTime !== undefined) normalizedUpdates.startWorkingTime = String(policy.startWorkingTime || '09:00');
+  if (policy.gracePeriodMinutes !== undefined) normalizedUpdates.gracePeriodMinutes = Number(policy.gracePeriodMinutes || 10);
+  if (policy.requiredDailyWorkingHours !== undefined) normalizedUpdates.requiredDailyWorkingHours = Number(policy.requiredDailyWorkingHours || 8);
+  if (policy.allowedLeavesPerMonth !== undefined) normalizedUpdates.allowedLeavesPerMonth = Number(policy.allowedLeavesPerMonth || 1);
+  if (policy.autoCheckoutHours !== undefined) normalizedUpdates.autoCheckoutHours = Number(policy.autoCheckoutHours || 12);
+  if (policy.timezone !== undefined) normalizedUpdates.timezone = String(policy.timezone || Session.getScriptTimeZone() || 'UTC');
+
+  return updateEmployee(employeeId, normalizedUpdates);
+}
+
+function getMonthlyAttendancePerformance(month, year) {
+  const m = Number(month);
+  const y = Number(year);
+  if (!m || !y) throw new Error('month and year are required');
+
+  const employees = getEmployees().filter(function(employee) {
+    return String(employee.status || '').toLowerCase() !== 'left';
+  });
+  const summaries = getDailyAttendanceSummaries();
+
+  return employees.map(function(employee) {
+    const policy = {
+      requiredDailyWorkingHours: Number(employee.requiredDailyWorkingHours || 8),
+      allowedLeavesPerMonth: Number(employee.allowedLeavesPerMonth || 1),
+    };
+    const rows = summaries.filter(function(item) {
+      if (String(item.employeeId) !== String(employee.id)) return false;
+      const d = new Date(String(item.date || '') + 'T00:00:00');
+      if (isNaN(d.getTime())) return false;
+      return d.getFullYear() === y && (d.getMonth() + 1) === m;
+    });
+
+    const totalHours = Number(rows.reduce(function(sum, row) {
+      return sum + Number(row.totalWorkingHours || 0);
+    }, 0).toFixed(2));
+    const lateCount = rows.filter(function(row) { return !!row.isLateCheckIn; }).length;
+    const lateLeaveDeductions = Math.floor(lateCount / 4);
+    const leavesUsed = Math.min(policy.allowedLeavesPerMonth, lateLeaveDeductions);
+    const paidLeaveDeductions = Math.max(0, lateLeaveDeductions - policy.allowedLeavesPerMonth);
+
+    const requiredHoursForMonth = Number((rows.length * policy.requiredDailyWorkingHours).toFixed(2));
+    let status = 'Good';
+    if (paidLeaveDeductions > 0 || (requiredHoursForMonth > 0 && totalHours < requiredHoursForMonth * 0.7)) {
+      status = 'Critical';
+    } else if (lateCount >= 4 || (requiredHoursForMonth > 0 && totalHours < requiredHoursForMonth * 0.9)) {
+      status = 'Attention';
+    }
+
+    return {
+      employeeId: String(employee.id),
+      employeeName: String(employee.name || ''),
+      totalHours: totalHours,
+      lateCount: lateCount,
+      leavesUsed: leavesUsed,
+      paidLeaveDeductions: paidLeaveDeductions,
+      lateLeaveDeductions: lateLeaveDeductions,
+      status: status,
+    };
+  });
+}
+
 /**
  * Get daily attendance summaries for a specific date
  */
@@ -2439,7 +2902,20 @@ function getDailyAttendanceSummariesByDate(date) {
  */
 function getDailyAttendanceSummaries(startDate, endDate) {
   const sheet = getSheet(DAILY_ATTENDANCE_SUMMARY_SHEET);
-  return sheetToObjects(sheet, DAS_HEADERS);
+  const data = sheet.getDataRange().getValues();
+  const results = [];
+  const start = startDate ? String(startDate) : '';
+  const end = endDate ? String(endDate) : '';
+
+  for (let i = 1; i < data.length; i++) {
+    const item = parseRowToDAS(data[i]);
+    if (!item.date) continue;
+    if (start && item.date < start) continue;
+    if (end && item.date > end) continue;
+    results.push(item);
+  }
+
+  return results;
 }
 
 function parseRowToDAS(row) {
@@ -2452,14 +2928,20 @@ function parseRowToDAS(row) {
     checkInTime: String(row[5]) || undefined,
     checkOutTime: String(row[6]) || undefined,
     totalWorkingHours: Number(row[7]) || 0,
-    isLateCheckIn: String(row[8]) === 'true',
+    isLateCheckIn: parseBoolean(row[8]),
     checkInStatus: String(row[9]),
     status: String(row[10]),
     workSummary: String(row[11]) || undefined,
     dayPlan: String(row[12]) || undefined,
     challengesAndSupport: String(row[13]) || undefined,
     createdAt: String(row[14]),
-    lockedAt: String(row[15]) || undefined
+    lockedAt: String(row[15]) || undefined,
+    sessionCount: Number(row[16] || 0),
+    attendanceStatus: String(row[17] || ''),
+    requiredDailyWorkingHours: Number(row[18] || 0),
+    overtimeHours: Number(row[19] || 0),
+    halfDayThresholdHours: Number(row[20] || 0),
+    updatedAt: String(row[21] || '') || undefined,
   };
 }
 

@@ -14,6 +14,14 @@ interface DailyWorkReportFormProps {
 
 type SubmissionType = 'Check-In' | 'Check-Out';
 
+function getLocalDateString() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 export default function DailyWorkReportForm({ employeeId, employeeEmail, userRole = 'employee', onSuccess }: DailyWorkReportFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [submissionType, setSubmissionType] = useState<SubmissionType>('Check-In');
@@ -33,7 +41,7 @@ export default function DailyWorkReportForm({ employeeId, employeeEmail, userRol
 
         setIsLoading(true);
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getLocalDateString();
             const now = new Date().toISOString();
 
             const payload: Omit<DailyWorkSubmission, 'id' | 'createdAt'> = {
