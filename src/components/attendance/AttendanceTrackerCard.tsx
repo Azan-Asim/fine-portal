@@ -18,21 +18,30 @@ function formatDuration(seconds: number) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`;
 }
 
-function statusBadgeClass(status: string) {
-    if (status === 'Critical') return 'bg-red-500/10 text-red-500';
-    if (status === 'Attention') return 'bg-amber-500/10 text-amber-500';
-    if (status === 'Late') return 'bg-red-500/10 text-red-500';
-    if (status === 'Overtime') return 'bg-indigo-500/10 text-indigo-400';
-    if (status === 'Half Day') return 'bg-orange-500/10 text-orange-500';
-    return 'bg-green-500/10 text-green-500';
+function formatTime(value?: string) {
+    if (!value) return '--';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '--';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function formatDate(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 export default function AttendanceTrackerCard({ employeeId }: AttendanceTrackerCardProps) {
     const [tracker, setTracker] = useState<AttendanceTodayTracker | null>(null);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
+    const [nowTick, setNowTick] = useState(Date.now());
 
     const isCheckedIn = !!tracker && (tracker.canCheckOut || !!tracker.activeSession);
+    const hasActiveSession = !!tracker?.activeSession;
+    const canClockIn = !!tracker?.canCheckIn;
+    const canClockOut = !!tracker?.canCheckOut;
+    const hasHistory = !!tracker?.sessions?.length;
 
     const refresh = async (silent?: boolean) => {
         if (!silent) setLoading(true);
@@ -58,7 +67,27 @@ export default function AttendanceTrackerCard({ employeeId }: AttendanceTrackerC
         return () => clearInterval(handle);
     }, [employeeId]);
 
-    const totalWorkedSeconds = tracker?.totalWorkedSeconds || 0;
+    useEffect(() => {
+        const handle = setInterval(() => {
+            setNowTick(Date.now());
+        }, 1000);
+        return () => clearInterval(handle);
+    }, []);
+
+    const completedWorkedSeconds = useMemo(() => {
+        if (!tracker?.sessions?.length) return 0;
+
+        return tracker.sessions.reduce((sum, session) => {
+            if (!session.checkIn || !session.checkOut) return sum;
+
+            const checkInMs = new Date(session.checkIn).getTime();
+            const checkOutMs = new Date(session.checkOut).getTime();
+
+            if (Number.isNaN(checkInMs) || Number.isNaN(checkOutMs)) return sum;
+            const durationSeconds = Math.max(0, Math.floor((checkOutMs - checkInMs) / 1000));
+            return sum + durationSeconds;
+        }, 0);
+    }, [tracker]);
 
     const lastCompletedSessionSeconds = useMemo(() => {
         if (!tracker?.sessions?.length) return 0;
@@ -77,14 +106,64 @@ export default function AttendanceTrackerCard({ employeeId }: AttendanceTrackerC
         return 0;
     }, [tracker]);
 
-    const isDebugVisible = process.env.NODE_ENV !== 'production';
+    const activeWorkedSeconds = useMemo(() => {
+        if (!tracker?.activeSession?.checkInUtc) return 0;
+        const checkInMs = new Date(tracker.activeSession.checkInUtc).getTime();
+        if (Number.isNaN(checkInMs)) return 0;
+        return Math.max(0, Math.floor((nowTick - checkInMs) / 1000));
+    }, [tracker, nowTick]);
+
+    const totalWorkedSecondsLive = completedWorkedSeconds + activeWorkedSeconds;
+
+    const currentCheckInTime = useMemo(() => {
+        if (tracker?.activeSession?.checkInUtc) {
+            return tracker.activeSession.checkInUtc;
+        }
+        const openSession = tracker?.sessions?.find((session) => session.checkIn && !session.checkOut);
+        return openSession?.checkIn || '';
+    }, [tracker]);
+
+    const lastCheckOutTime = useMemo(() => {
+        if (!tracker?.sessions?.length) return '';
+        for (let index = tracker.sessions.length - 1; index >= 0; index -= 1) {
+            const session = tracker.sessions[index];
+            if (session.checkOut) return session.checkOut;
+        }
+        return '';
+    }, [tracker]);
+
+    const timelineEntries = useMemo(() => {
+        if (!tracker?.sessions?.length) return [] as { id: string; type: 'Clock in' | 'Clock out'; time: string; active?: boolean }[];
+
+        return tracker.sessions.flatMap((session, index) => {
+            const items: { id: string; type: 'Clock in' | 'Clock out'; time: string; active?: boolean }[] = [];
+            if (session.checkIn) {
+                items.push({
+                    id: `check-in-${index}-${session.checkIn}`,
+                    type: 'Clock in',
+                    time: session.checkIn,
+                    active: !session.checkOut,
+                });
+            }
+            if (session.checkOut) {
+                items.push({
+                    id: `check-out-${index}-${session.checkOut}`,
+                    type: 'Clock out',
+                    time: session.checkOut,
+                });
+            }
+            return items;
+        });
+    }, [tracker]);
+
+    const liveTimeLabel = new Date(nowTick).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
     const onCheckIn = async () => {
         setBusy(true);
         try {
             const next = await checkInAttendance(employeeId);
             setTracker(next);
-            toast.success('Checked in successfully.');
+            toast.success(`Checked in at ${formatTime(next.activeSession?.checkInUtc)}.`);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Check-in failed.';
             toast.error(message);
@@ -98,7 +177,8 @@ export default function AttendanceTrackerCard({ employeeId }: AttendanceTrackerC
         try {
             const next = await checkOutAttendance(employeeId);
             setTracker(next);
-            toast.success('Checked out successfully.');
+            const latestCheckout = [...(next.sessions || [])].reverse().find((session) => !!session.checkOut)?.checkOut;
+            toast.success(`Checked out at ${formatTime(latestCheckout)}.`);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Check-out failed.';
             toast.error(message);
@@ -108,11 +188,11 @@ export default function AttendanceTrackerCard({ employeeId }: AttendanceTrackerC
     };
 
     return (
-        <div className="card" style={{ padding: 0 }}>
-            <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+        <div className="card" style={{ padding: 0, borderRadius: 24, overflow: 'hidden' }}>
+            <div className="px-6 py-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)', background: 'var(--bg-hover)' }}>
                 <div className="flex items-center gap-2">
                     <Clock3 size={16} style={{ color: 'var(--accent)' }} />
-                    <h3 className="font-semibold">Today Attendance Tracker</h3>
+                    <h3 className="font-semibold">{tracker ? formatDate(tracker.date) : 'Today'}</h3>
                 </div>
                 <button className="btn-secondary" onClick={() => refresh()} disabled={busy || loading}>
                     <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -124,75 +204,102 @@ export default function AttendanceTrackerCard({ employeeId }: AttendanceTrackerC
             ) : !tracker ? (
                 <div className="p-6" style={{ color: 'var(--danger)' }}>Unable to load attendance tracker.</div>
             ) : (
-                <div className="p-6 space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div className="rounded-lg p-3" style={{ background: 'var(--bg-hover)' }}>
-                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Current Status</p>
-                            <p className="text-xl font-semibold">{isCheckedIn ? 'Checked In' : 'Checked Out'}</p>
-                        </div>
-                        <div className="rounded-lg p-3" style={{ background: 'var(--bg-hover)' }}>
-                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Total Worked Today</p>
-                            <p className="text-xl font-semibold">{formatDuration(totalWorkedSeconds)}</p>
-                        </div>
-                        <div className="rounded-lg p-3" style={{ background: 'var(--bg-hover)' }}>
-                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Session Count</p>
-                            <p className="text-xl font-semibold">{tracker.sessionCount}</p>
-                        </div>
-                        <div className="rounded-lg p-3" style={{ background: 'var(--bg-hover)' }}>
-                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Daily Status</p>
-                            <span className={`px-2 py-1 rounded text-xs font-semibold ${statusBadgeClass(tracker.attendanceStatus)}`}>
-                                {tracker.attendanceStatus}
-                            </span>
+                <div className="p-5 space-y-5" style={{ background: '#f3f4f6' }}>
+                    <div className="rounded-2xl p-4 bg-white border" style={{ borderColor: 'var(--border)' }}>
+                        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Hi, {tracker.employeeName}</p>
+                        <p className="text-xl font-semibold mt-1">{hasActiveSession ? 'Clock in running' : hasHistory ? 'Clock out completed' : 'Ready to clock in'}</p>
+                        <div className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                            <span>Worked today: {formatDuration(totalWorkedSecondsLive)}</span>
+                            <span className="mx-2">•</span>
+                            <span>Sessions: {tracker.sessionCount}</span>
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                        <span>Start: {tracker.policy.startWorkingTime}</span>
-                        <span>Grace: {tracker.policy.gracePeriodMinutes}m</span>
-                        <span>Required: {tracker.policy.requiredDailyWorkingHours}h</span>
-                        <span>Last session: {formatDuration(lastCompletedSessionSeconds)}</span>
-                        <span>Late this month: {tracker.lateCountInMonth}</span>
-                        <span>Leave from late: {tracker.leaveDeductionFromLate}</span>
-                        <span>Paid leave deduction: {tracker.paidLeaveDeductions}</span>
-                    </div>
+                    <div className="relative pl-6">
+                        <div className="absolute left-2.5 top-1 bottom-1 w-px" style={{ background: '#d1d5db' }} />
 
-                    <div className="flex flex-wrap gap-3">
-                        {isCheckedIn ? (
-                            <button
-                                className="btn-danger"
-                                disabled={busy || !tracker.canCheckOut}
-                                onClick={onCheckOut}
-                            >
-                                <LogOut size={16} /> Check-Out
-                            </button>
-                        ) : (
-                            <button
-                                className="btn-primary"
-                                disabled={busy || !tracker.canCheckIn}
-                                onClick={onCheckIn}
-                            >
-                                <LogIn size={16} /> Check-In
-                            </button>
+                        {!hasHistory && (
+                            <div className="relative mb-4">
+                                <span className="absolute" style={{ left: '-22px', top: '8px', height: 12, width: 12, borderRadius: 9999, background: '#9ca3af' }} />
+                                <div className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>Clock in</div>
+                                <div className="rounded-2xl p-4 bg-white border" style={{ borderColor: 'var(--border)' }}>
+                                    <p className="font-semibold text-lg">No attendance recorded yet</p>
+                                    <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                                        Tap clock in to start the day.
+                                    </p>
+                                </div>
+                            </div>
                         )}
-                    </div>
 
-                    {isDebugVisible && (
-                        <div
-                            className="rounded-lg p-3 text-xs"
-                            style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
-                        >
-                            <p className="font-semibold mb-2">Timer Debug (Dev Only)</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <p>Total worked seconds: {tracker.totalWorkedSeconds}</p>
-                                <p>Last completed session seconds: {lastCompletedSessionSeconds}</p>
-                                <p>Backend active seconds: {tracker.activeSession?.activeDurationSeconds || 0}</p>
-                                <p>Has active session: {tracker.activeSession ? 'yes' : 'no'}</p>
-                                <p>Session ID: {tracker.activeSession?.sessionId || 'none'}</p>
-                                <p>canCheckIn: {tracker.canCheckIn ? 'yes' : 'no'}</p>
-                                <p>canCheckOut: {tracker.canCheckOut ? 'yes' : 'no'}</p>
+                        {timelineEntries.map((entry) => (
+                            <div key={entry.id} className="relative mb-4">
+                                <span
+                                    className="absolute"
+                                    style={{
+                                        left: '-22px',
+                                        top: '8px',
+                                        height: 12,
+                                        width: 12,
+                                        borderRadius: 9999,
+                                        background: entry.active ? '#3b82f6' : '#9ca3af',
+                                    }}
+                                />
+                                <div className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>{entry.type}</div>
+                                <div className="rounded-2xl p-4 bg-white border" style={{ borderColor: 'var(--border)' }}>
+                                    <p className="font-semibold text-2xl">Attendance recorded {formatTime(entry.time)}</p>
+                                    <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                                        {entry.type === 'Clock in' ? 'Check in time' : 'Check out time'}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
+
+                        <div className="relative">
+                            <span
+                                className="absolute"
+                                style={{ left: '-22px', top: '8px', height: 12, width: 12, borderRadius: 9999, background: '#3b82f6' }}
+                            />
+                            <div className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
+                                {hasActiveSession ? 'Clock out' : 'Clock in'}
+                            </div>
+                            <div className="rounded-2xl p-6 bg-white border" style={{ borderColor: 'var(--border)' }}>
+                                <p className="text-6xl font-bold text-center tracking-wide">{liveTimeLabel}</p>
+                                <div className="mt-6 flex justify-center">
+                                    {hasActiveSession ? (
+                                        <button
+                                            className="btn-danger"
+                                            disabled={busy || !canClockOut}
+                                            onClick={onCheckOut}
+                                            style={{ borderRadius: 9999, paddingLeft: 36, paddingRight: 36, minWidth: 220 }}
+                                        >
+                                            <LogOut size={18} /> Clock Out
+                                        </button>
+                                    ) : (
+                                        <button
+                                            className="btn-primary"
+                                            disabled={busy || !canClockIn}
+                                            onClick={onCheckIn}
+                                            style={{ borderRadius: 9999, paddingLeft: 36, paddingRight: 36, minWidth: 220 }}
+                                        >
+                                            <LogIn size={18} /> Clock In
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="mt-5 text-sm text-center" style={{ color: 'var(--text-secondary)' }}>
+                                    {hasActiveSession ? `Checked in at ${formatTime(currentCheckInTime)}` : `Last checked out at ${formatTime(lastCheckOutTime)}`}
+                                </div>
+                                <div className="mt-2 text-xs text-center" style={{ color: 'var(--text-secondary)' }}>
+                                    {hasActiveSession
+                                        ? 'Clock out becomes available only after clock in.'
+                                        : 'Clock in is available for a new session when the day is still open.'}
+                                </div>
+                                <div className="mt-2 text-xs text-center" style={{ color: 'var(--text-secondary)' }}>
+                                    Current session: {hasActiveSession ? formatDuration(activeWorkedSeconds) : '--'} • Last completed: {formatDuration(lastCompletedSessionSeconds)}
+                                </div>
                             </div>
                         </div>
-                    )}
+                    </div>
                 </div>
             )}
         </div>

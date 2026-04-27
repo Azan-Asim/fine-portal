@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import Header from '@/components/Header';
 import { getPenalties, deletePenalty, markPenaltyPaid, updatePenalty } from '@/lib/googleSheets';
+import { sendPenaltyEmail } from '@/lib/emailjs';
 import { Penalty, PenaltyStatus } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Trash2, CheckCircle, Eye, Search, Filter, Loader2, FileText, X } from 'lucide-react';
+import { Trash2, CheckCircle, Eye, Search, Filter, Loader2, FileText, X, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 type FilterOption = 'All' | PenaltyStatus;
@@ -16,6 +17,7 @@ export default function PenaltiesPage() {
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<FilterOption>('All');
     const [actionId, setActionId] = useState<string | null>(null);
+    const [resendId, setResendId] = useState<string | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<Penalty | null>(null);
     const [viewProof, setViewProof] = useState<Penalty | null>(null);
 
@@ -65,6 +67,24 @@ export default function PenaltiesPage() {
             toast.error('Failed to update penalty.');
         } finally {
             setActionId(null);
+        }
+    };
+
+    const handleResendEmail = async (p: Penalty) => {
+        setResendId(p.id);
+        try {
+            await sendPenaltyEmail({
+                employeeName: p.employeeName,
+                employeeEmail: p.email,
+                reason: p.reason,
+                amount: p.amount,
+                date: p.date,
+            });
+            toast.success(`Email resent to ${p.employeeName}.`);
+        } catch {
+            toast.error('Failed to resend email. Check EmailJS config.');
+        } finally {
+            setResendId(null);
         }
     };
 
@@ -143,6 +163,13 @@ export default function PenaltiesPage() {
                                             <td style={{ color: 'var(--text-secondary)' }}>{p.paymentType || '—'}</td>
                                             <td>
                                                 <div className="flex gap-2">
+                                                    <button onClick={() => handleResendEmail(p)}
+                                                        title="Resend penalty email"
+                                                        disabled={resendId === p.id}
+                                                        className="p-1.5 rounded-md transition-colors"
+                                                        style={{ background: 'rgba(88,166,255,0.15)', color: '#58A6FF' }}>
+                                                        {resendId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                                                    </button>
                                                     {p.paymentProof && (
                                                         <button onClick={() => setViewProof(p)}
                                                             className="p-1.5 rounded-md transition-colors"
